@@ -1,0 +1,213 @@
+{
+  "name": "astrbot-live2d-desktop",
+  "version": "1.0.0",
+  "description": "L2D Pro: 基于 AstrBot Live2D Desktop 重构的桌面 Live2D 客户端",
+  "main": "dist-electron/main.js",
+  "type": "module",
+  "author": "sleep430",
+  "license": "MIT",
+  "keywords": [
+    "electron",
+    "vue3",
+    "live2d",
+    "astrbot",
+    "desktop"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sleep430/astrbot-live2d-desktop.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "rebuild": "electron-rebuild -f -w active-win,better-sqlite3,bufferutil,utf-8-validate,extract-file-icon,node-window-manager",
+    "package:dir": "electron-builder --dir --publish never",
+    "package:win": "electron-builder --win --publish never",
+    "package:mac": "electron-builder --mac --publish never",
+    "package:linux": "electron-builder --linux --publish never"
+  },
+  "cubism": {
+    "sdkBaseline": "5-r.4",
+    "frameworkRepo": "https://github.com/Live2D/CubismWebFramework.git",
+    "frameworkTag": "5-r.4",
+    "frameworkCommit": "8df84780f2aa1298f3b30965cdae143e049f3c8e",
+    "samplesRepo": "https://github.com/Live2D/CubismWebSamples.git",
+    "samplesTag": "5-r.4",
+    "samplesCommit": "435707a4676c19de754a8a557638450f889dcd2c",
+    "core": {
+      "filename": "live2dcubismcore.min.js",
+      "downloadUrl": "https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js",
+      "runtimeSource": "official-sdk-download",
+      "expectedHash": "sha256-25ae938cb4fe282ce189b357bcc97e603d1e1f7ec78bf04150d401c23cdc792f"
+    }
+  },
+  "desktopMetadata": {
+    "protocol": {
+      "version": "1.0.0"
+    },
+    "links": {
+      "astrbot": "https://github.com/AstrBotDevs/AstrBot",
+      "repository": "https://github.com/sleep430/astrbot-live2d-desktop",
+      "originalProject": "https://github.com/lxfight/astrbot-live2d-desktop",
+      "adapterPlugin": "https://github.com/lxfight/astrbot_plugin_live2d_adapter"
+    },
+    "storage": {
+      "local": {
+        "advancedSettings": {
+          "key": "advancedSettings",
+          "version": 1
+        },
+        "connectionSettings": {
+          "key": "connectionSettings",
+          "version": 2
+        },
+        "modelPositions": {
+          "key": "modelPositions",
+          "version": 1
+        },
+        "modelScales": {
+          "key": "modelScales",
+          "version": 1
+        },
+        "themeState": {
+          "key": "rendererThemeState",
+          "version": 1
+        },
+        "lastModelPath": {
+          "key": "lastModelPath"
+        }
+      },
+      "userConfig": {
+        "userId": "user_id",
+        "userName": "user_name",
+        "autoUpdateEnabled": "app_auto_update_enabled",
+        "screenshotDefaultTarget": "desktop_capture_default_target",
+        "screenshotQuality": "desktop_capture_quality",
+        "screenshotMaxWidth": "desktop_capture_max_width",
+        "connectionSettingsV3": "connection_settings_v3",
+        "connectionBehaviorSettingsV1": "connection_behavior_settings_v1",
+        "alwaysOnTop": "tray_always_on_top",
+        "fullPassThrough": "tray_pass_through_mode",
+        "dynamicPassThrough": "desktop_dynamic_pass_through",
+        "autoDetectFullscreen": "tray_game_mode"
+      }
+    }
+  },
+  "dependencies": {
+    "@vueuse/core": "^14.2.1",
+    "active-win": "^9.0.0",
+    "axios": "^1.14.0",
+    "better-sqlite3": "^12.8.0",
+    "bufferutil": "^4.1.0",
+    "colorthief": "^2.7.0",
+    "date-fns": "^3.6.0",
+    "dompurify": "^3.3.3",
+    "echarts": "^5.6.0",
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.8.3",
+    "extract-file-icon": "^0.3.2",
+    "howler": "^2.2.4",
+    "katex": "^0.16.44",
+    "koffi": "^2.15.2",
+    "lucide-vue-next": "^0.563.0",
+    "marked": "^17.0.5",
+    "naive-ui": "^2.44.1",
+    "node-addon-api": "^8.7.0",
+    "pinia": "^3.0.4",
+    "simplex-noise": "^4.0.3",
+    "utf-8-validate": "^6.0.6",
+    "uuid": "^9.0.1",
+    "vue": "^3.5.31",
+    "vue-i18n": "^10.0.8",
+    "ws": "^8.20.0"
+  },
+  "optionalDependencies": {
+    "node-window-manager": "^2.2.4"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
+    "electron": "^40.8.5",
+    "electron-builder": "^26.8.1"
+  },
+  "build": {
+    "appId": "com.astrbot.live2d.desktop",
+    "productName": "AstrBot Live2D Desktop Pro",
+    "directories": {
+      "output": "release",
+      "buildResources": "resources"
+    },
+    "extraResources": [
+      {
+        "from": "resources/icon.ico",
+        "to": "icon.ico"
+      },
+      {
+        "from": "resources/icon.png",
+        "to": "icon.png"
+      },
+      {
+        "from": "resources/icon.icns",
+        "to": "icon.icns"
+      }
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "files": [
+      "dist/**",
+      "dist-electron/**",
+      "resources/**",
+      "package.json",
+      "!dist/models/**",
+      "!dist/lib/live2dcubismcore.min.js",
+      "!**/*.map",
+      "!**/*.log"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "artifactName": "astrbot-live2d-desktop-pro-v${version}-${os}-${arch}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "sleep430",
+        "repo": "astrbot-live2d-desktop"
+      }
+    ],
+    "win": {
+      "icon": "resources/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "resources/icon.ico",
+      "uninstallerIcon": "resources/icon.ico",
+      "runAfterFinish": true
+    },
+    "portable": {
+      "artifactName": "astrbot-live2d-desktop-pro-v${version}-portable-${arch}.${ext}"
+    },
+    "mac": {
+      "icon": "resources/icon.icns",
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "icon": "resources/icon.png",
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility"
+    }
+  }
+}
