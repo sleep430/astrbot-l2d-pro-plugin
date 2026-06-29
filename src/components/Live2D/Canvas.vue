@@ -1,0 +1,690 @@
+<template>
+  <canvas ref="canvasRef" class="live2d-canvas"></canvas>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, onUnmounted } from 'vue'
+import { CubismModel as Live2DModel } from '@/utils/cubism/CubismModel'
+import { AudioLipSyncAnalyzer } from '@/utils/AudioLipSyncAnalyzer'
+import type {
+  CubismCompatibilityManifest,
+  CubismExpressionRequest,
+  CubismHitAreaInfo,
+  CubismModelInfo
+} from '@/utils/cubism'
+
+const canvasRef = ref<HTMLCanvasElement>()
+let model: Live2DModel | null = null
+let renderFrameId: number | null = null
+const lipSyncAnalyzer = new AudioLipSyncAnalyzer()
+
+// 模型重载后需要重新应用的行为配置
+let pendingIdleActivity: number | null = null
+let pendingPersistentExpressions: string[] = []
+
+function applyLipSyncValue(value: number) {
+  model?.setLipSyncValue(value)
+}
+
+/**
+ * 开始口型同步：分析音频元素的实时音量并驱动模型口型
+ */
+function startLipSync(audioElement: HTMLAudioElement) {
+  lipSyncAnalyzer.start(audioElement, applyLipSyncValue)
+}
+
+/**
+ * 停止口型同步并闭合口型
+ */
+function stopLipSync() {
+  lipSyncAnalyzer.stop()
+}
+
+/**
+ * 设置待机活跃度（0~1）
+ */
+function setIdleActivity(value: number) {
+  pendingIdleActivity = value
+  model?.setIdleActivity(value)
+}
+
+/**
+ * 设置常驻表情（如水印开关）
+ */
+function setPersistentExpressions(names: string[]) {
+  pendingPersistentExpressions = [...names]
+  model?.setPersistentExpressions(names)
+}
+
+function stopRenderLoop() {
+  if (renderFrameId !== null) {
+    cancelAnimationFrame(renderFrameId)
+    renderFrameId = null
+  }
+}
+function startRenderLoop() {
+  stopRenderLoop()
+
+  let lastTime = performance.now()
+  const TARGET_FPS = 60
+  const frameInterval = 1000 / TARGET_FPS
+
+  const renderFrame = (timestamp: number) => {
+    if (!model) {
+      renderFrameId = null
+      return
+    }
+
+    const elapsed = timestamp - lastTime
+    if (elapsed >= frameInterval) {
+      lastTime = timestamp - (elapsed % frameInterval)
+      model.update()
+      model.render()
+    }
+
+    renderFrameId = requestAnimationFrame(renderFrame)
+  }
+
+  renderFrameId = requestAnimationFrame(renderFrame)
+}
+
+const emit = defineEmits<{
+  modelLoaded: []
+  modelClick: [{ x: number; y: number; hitArea?: CubismHitAreaInfo | null }]
+  modelRightClick: [{ x: number; y: number }]
+  modelInfoChanged: [CubismModelInfo]
+  modelPositionChanged: [{ x: number; y: number }]
+}>()
+
+/**
+ * 加载 Live2D 模型
+ */
+async function loadModel(
+  modelPath: string,
+  initialPosition?: { x: number; y: number },
+  initialScale: number = 1.0,
+  compatibilityManifest?: CubismCompatibilityManifest | null
+) {
+  if (!canvasRef.value) {
+    console.error('[Live2D] Canvas 未初始化')
+    return
+  }
+
+  try {
+    console.log('[Live2D] 开始加载模型:', modelPath)
+
+    // 如果有旧模型，先销毁（仅移除模型，保留 Application）
+    if (model) {
+      console.log('[Live2D] 移除旧模型...')
+      stopRenderLoop()
+      stopLipSync()
+      model.destroy()
+      model = null
+    }
+
+    // 加载新模型
+    model = await Live2DModel.from(modelPath, compatibilityManifest)
+
+    // 重新应用行为配置（新实例不保留旧模型状态）
+    if (pendingIdleActivity !== null) {
+      model.setIdleActivity(pendingIdleActivity)
+    }
+    model.setPersistentExpressions(pendingPersistentExpressions)
+
+    // 初始化 WebGL 并启动渲染循环，传入初始位置
+    model.initWebGL(canvasRef.value, initialPosition, initialScale)
+    await model.loadTextures()
+    startRenderLoop()
+
+    console.log('[Live2D] 模型加载成功')
+    emit('modelLoaded')
+
+    // 获取并发送模型信息
+    const modelInfo = model.getModelInfo()
+    emit('modelInfoChanged', modelInfo)
+    console.log('[Live2D] 模型信息已发送:', modelInfo)
+  } catch (error) {
+    console.error('[Live2D] 模型加载失败:', error)
+    throw error
+  }
+}
+
+/**
+ * 获取当前模型信息
+ */
+function getModelInfo(): CubismModelInfo {
+  if (!model) {
+    return {
+      name: '',
+      motionGroups: {},
+      expressions: [],
+      hitAreas: [],
+      capabilities: {
+        expressionCombo: false,
+        semanticExpression: false,
+        expressionProfile: false
+      },
+      expressionCatalog: [],
+      semanticPresets: {},
+      discovery: {
+        mode: 'standard',
+        sources: [],
+        companionFiles: [],
+        standardDeclaredExpressions: 0,
+        standardDeclaredMotionGroups: 0,
+        discoveredExpressions: 0,
+        discoveredMotionGroups: 0,
+        scannedExpressionCount: 0,
+        scannedMotionCount: 0,
+        warnings: []
+      }
+    }
+  }
+  return model.getModelInfo()
+}
+
+/**
+ * 播放动作
+ */
+function playMotion(group: string, index: number = 0, priority?: number, loop?: boolean) {
+  if (!model) return
+  model.motion(group, index, priority, loop ?? false)
+}
+
+function stopBodyMotions() {
+  model?.stopBodyMotions()
+}
+
+function getMotionDurationMap(): Record<string, number> {
+  return model?.getMotionDurationMap() ?? {}
+}
+
+/**
+ * 设置表情
+ */
+function setExpression(expression: string | number | CubismExpressionRequest) {
+  if (!model) return
+  model.expression(expression)
+}
+
+function resetExpression(fadeMs: number = 300) {
+  model?.resetExpression(fadeMs)
+}
+
+/**
+ * 播放随机动作
+ */
+function playRandomMotion() {
+  if (!model) return
+
+  const info = model.getModelInfo()
+  const groupNames = Object.keys(info.motionGroups).filter(group => {
+    const motions = info.motionGroups[group]
+    return Array.isArray(motions) && motions.length > 0
+  })
+
+  if (groupNames.length === 0) {
+    console.warn('[Live2D] 当前模型没有可用动作组')
+    return
+  }
+
+  const group = groupNames[Math.floor(Math.random() * groupNames.length)]
+  const motions = info.motionGroups[group]
+  const motion = motions[Math.floor(Math.random() * motions.length)]
+
+  model.motion(group, motion.index)
+}
+
+/**
+ * 设置模型位置
+ */
+function setModelPosition(x: number, y: number) {
+  if (!model) return
+  model.setModelPosition(x, y)
+  console.log('[Live2D] 模型位置已设置:', { x, y })
+}
+
+/**
+ * 设置模型缩放
+ */
+function setModelScale(scale: number) {
+  if (!model) return
+  model.setModelScale(scale)
+  console.log('[Live2D] 模型缩放已设置:', scale)
+}
+
+/**
+ * 获取模型位置
+ */
+function getModelPosition(): { x: number; y: number } | null {
+  if (!model) return null
+  return model.getModelPosition()
+}
+
+function getModelBounds(): {
+  left: number
+  right: number
+  top: number
+  bottom: number
+  width: number
+  height: number
+} | null {
+  if (!model) return null
+  return model.getModelBounds()
+}
+
+function getModelOverlayBounds(): {
+  left: number
+  right: number
+  top: number
+  bottom: number
+  width: number
+  height: number
+  anchorX: number
+  topCenterY: number
+  bottomCenterY: number
+} | null {
+  if (!model) return null
+  return model.getModelOverlayBounds()
+}
+
+// 拖动相关状态
+let isDragging = false
+let isDragStartedOnModel = false // 标记拖动是否从模型上开始
+let dragStartX = 0
+let dragStartY = 0
+let cursorOffsetX = 0
+let cursorOffsetY = 0
+const DRAG_THRESHOLD = 10 // 拖动阈值（像素）
+const DRAG_VISIBLE_MIN_RATIO = 0.2 // 拖拽时模型至少保留 20% 可见
+let isFullPassThroughMode = false
+let dynamicPassThroughEnabled = true
+let supportsDynamicPassThrough = false
+let currentIgnoreMouseEvents = false
+let passThroughFrameId: number | null = null
+let pendingPassThroughEvent: MouseEvent | null = null
+let lastPointerEvent: MouseEvent | null = null
+let disposeDesktopBehaviorListener: Unsubscribe | null = null
+
+function stopPassThroughDetection() {
+  if (passThroughFrameId !== null) {
+    cancelAnimationFrame(passThroughFrameId)
+    passThroughFrameId = null
+  }
+  pendingPassThroughEvent = null
+}
+
+async function setMousePassthrough(ignoreMouseEvents: boolean) {
+  if (currentIgnoreMouseEvents === ignoreMouseEvents) {
+    return
+  }
+
+  currentIgnoreMouseEvents = ignoreMouseEvents
+
+  try {
+    await window.electron.desktopBehavior.setMousePassthrough(ignoreMouseEvents)
+  } catch (error) {
+    console.warn('[Live2D] 更新鼠标穿透状态失败:', error)
+  }
+}
+
+/**
+ * 检查点是否在模型内
+ */
+function isPointInModel(x: number, y: number): boolean {
+  if (!model) return false
+  return model.isPointInModel(x, y)
+}
+
+function getHitAreaAtPoint(x: number, y: number): CubismHitAreaInfo | null {
+  return model?.getHitAreaAtPoint(x, y) ?? null
+}
+
+/**
+ * 处理鼠标按下
+ */
+function handleMouseDown(event: MouseEvent) {
+  const rect = canvasRef.value?.getBoundingClientRect()
+  if (!rect || !model) return
+
+  const x = event.clientX - rect.left
+  const y = event.clientY - rect.top
+
+  // 检查是否点击到模型（使用优化的检测方法）
+  const hitModel = isPointInModel(x, y)
+
+  // 左键开始拖动
+  if (event.button === 0 && hitModel) {
+    isDragging = false // 先标记为未拖动，等移动超过阈值再标记
+    isDragStartedOnModel = true // 标记拖动从模型上开始
+    dragStartX = event.clientX
+    dragStartY = event.clientY
+
+    // 获取当前模型位置
+    const position = model.getModelPosition()
+    if (position) {
+      cursorOffsetX = x - position.x
+      cursorOffsetY = y - position.y
+    }
+
+    event.preventDefault()
+  }
+}
+
+/**
+ * 处理鼠标移动
+ */
+function handleMouseMove(event: MouseEvent) {
+  if (!model) return
+
+  // 只有当拖动从模型上开始时才允许拖动
+  if (event.buttons === 1 && isDragStartedOnModel) {
+    const rect = canvasRef.value?.getBoundingClientRect()
+    if (!rect) return
+
+    const pointerX = event.clientX - rect.left
+    const pointerY = event.clientY - rect.top
+    const deltaX = event.clientX - dragStartX
+    const deltaY = event.clientY - dragStartY
+
+    // 判断是否超过拖动阈值
+    if (!isDragging && Math.hypot(deltaX, deltaY) > DRAG_THRESHOLD) {
+      isDragging = true
+    }
+
+    // 如果正在拖动，更新模型位置
+    if (isDragging) {
+      const rawX = pointerX - cursorOffsetX
+      const rawY = pointerY - cursorOffsetY
+
+      const bounds = model.getModelBounds()
+      if (bounds) {
+        const marginX = bounds.width * (1 - DRAG_VISIBLE_MIN_RATIO)
+        const marginY = bounds.height * (1 - DRAG_VISIBLE_MIN_RATIO)
+        const minX = -marginX
+        const maxX = window.innerWidth + marginX
+        const minY = -marginY
+        const maxY = window.innerHeight + marginY
+        const clampedX = Math.max(minX, Math.min(maxX, rawX))
+        const clampedY = Math.max(minY, Math.min(maxY, rawY))
+        model.setModelPosition(clampedX, clampedY)
+        const actualPosition = model.getModelPosition()
+
+        // 发射模型位置变化事件
+        emit('modelPositionChanged', {
+          x: actualPosition?.x ?? clampedX,
+          y: actualPosition?.y ?? clampedY
+        })
+      } else {
+        model.setModelPosition(rawX, rawY)
+        const actualPosition = model.getModelPosition()
+
+        emit('modelPositionChanged', {
+          x: actualPosition?.x ?? rawX,
+          y: actualPosition?.y ?? rawY
+        })
+      }
+
+      event.preventDefault()
+    }
+  }
+}
+
+/**
+ * 处理鼠标释放
+ */
+function handleMouseUp(event: MouseEvent) {
+  const rect = canvasRef.value?.getBoundingClientRect()
+  if (!rect || !model) return
+
+  const x = event.clientX - rect.left
+  const y = event.clientY - rect.top
+
+  // 检查是否点击到模型（使用优化的检测方法）
+  const isHit = isPointInModel(x, y)
+
+  // 如果没有拖动且点击到模型，触发点击事件
+  if (!isDragging && isHit && isDragStartedOnModel) {
+    event.stopPropagation()
+    emit('modelClick', { x: event.clientX, y: event.clientY, hitArea: getHitAreaAtPoint(x, y) })
+  }
+
+  // 重置拖动状态
+  isDragging = false
+  isDragStartedOnModel = false
+}
+
+/**
+ * 处理右键点击
+ */
+function handleContextMenu(event: MouseEvent) {
+  event.preventDefault()
+
+  const rect = canvasRef.value?.getBoundingClientRect()
+  if (!rect || !model) return
+
+  const x = event.clientX - rect.left
+  const y = event.clientY - rect.top
+
+  // 检查是否点击到模型（使用优化的检测方法）
+  const isHit = isPointInModel(x, y)
+
+  if (isHit) {
+    event.stopPropagation()
+
+    // 发射右键点击事件，传递鼠标点击位置（屏幕坐标）
+    if (model) {
+      emit('modelRightClick', {
+        x: event.clientX,
+        y: event.clientY
+      })
+    }
+  }
+}
+
+/**
+ * 处理窗口大小变化
+ */
+function handleResize() {
+  if (canvasRef.value && model) {
+    canvasRef.value.width = window.innerWidth
+    canvasRef.value.height = window.innerHeight
+
+    // 调整模型大小（不重新创建 Application）
+    model.resize(window.innerWidth, window.innerHeight)
+  }
+}
+
+function isPointOnInteractiveUI(clientX: number, clientY: number): boolean {
+  const element = document.elementFromPoint(clientX, clientY) as HTMLElement | null
+  if (!element) return false
+
+  return Boolean(
+    element.closest('.bubble') ||
+    element.closest('.radial-menu-container') ||
+    element.closest('.input-panel-container') ||
+    element.closest('.recording-toast') ||
+    element.closest('.model-status-toast') ||
+    element.closest('.empty-state')
+  )
+}
+
+function shouldIgnoreMouseEvents(event: MouseEvent): boolean {
+  if (isFullPassThroughMode) {
+    return true
+  }
+
+  if (!dynamicPassThroughEnabled || !supportsDynamicPassThrough) {
+    return false
+  }
+
+  if (!canvasRef.value || !model) {
+    return false
+  }
+
+  if (isPointOnInteractiveUI(event.clientX, event.clientY)) {
+    return false
+  }
+
+  const rect = canvasRef.value.getBoundingClientRect()
+  const x = event.clientX - rect.left
+  const y = event.clientY - rect.top
+  return !isPointInModel(x, y)
+}
+
+async function syncMousePassthrough() {
+  if (isFullPassThroughMode) {
+    await setMousePassthrough(true)
+    return
+  }
+
+  if (!dynamicPassThroughEnabled || !supportsDynamicPassThrough) {
+    await setMousePassthrough(false)
+    return
+  }
+
+  if (!model) {
+    await setMousePassthrough(false)
+    return
+  }
+
+  if (!lastPointerEvent) {
+    await setMousePassthrough(false)
+    return
+  }
+
+  await setMousePassthrough(shouldIgnoreMouseEvents(lastPointerEvent))
+}
+
+async function applyDesktopBehaviorSnapshot(snapshot: DesktopBehaviorSnapshot) {
+  isFullPassThroughMode = snapshot.preferences.fullPassThrough
+  dynamicPassThroughEnabled = snapshot.preferences.dynamicPassThrough
+  await syncMousePassthrough()
+}
+
+function handleWindowMouseMove(event: MouseEvent) {
+  if (model) {
+    model.focus(event.clientX, event.clientY)
+  }
+
+  lastPointerEvent = event
+  pendingPassThroughEvent = event
+
+  if (passThroughFrameId !== null) {
+    return
+  }
+
+  passThroughFrameId = requestAnimationFrame(() => {
+    passThroughFrameId = null
+    const latestEvent = pendingPassThroughEvent
+    pendingPassThroughEvent = null
+    if (!latestEvent) return
+    void setMousePassthrough(shouldIgnoreMouseEvents(latestEvent))
+  })
+}
+
+onMounted(async () => {
+  if (canvasRef.value) {
+    // 设置画布大小
+    canvasRef.value.width = window.innerWidth
+    canvasRef.value.height = window.innerHeight
+
+    // 监听鼠标事件
+    canvasRef.value.addEventListener('mousedown', handleMouseDown)
+    canvasRef.value.addEventListener('mousemove', handleMouseMove)
+    canvasRef.value.addEventListener('mouseup', handleMouseUp)
+    canvasRef.value.addEventListener('contextmenu', handleContextMenu)
+
+    // 眼睛跟踪鼠标
+    window.addEventListener('mousemove', handleWindowMouseMove)
+
+    // 监听窗口大小变化
+    window.addEventListener('resize', handleResize)
+
+    try {
+      const capabilities = await window.electron.window.getPlatformCapabilities()
+      supportsDynamicPassThrough = capabilities.mousePassthroughForward
+    } catch {
+      supportsDynamicPassThrough = false
+    }
+
+    try {
+      const snapshot = await window.electron.desktopBehavior.getSnapshot()
+      await applyDesktopBehaviorSnapshot(snapshot)
+    } catch (error) {
+      console.warn('[Live2D] 获取桌面行为快照失败:', error)
+      await setMousePassthrough(false)
+    }
+
+    disposeDesktopBehaviorListener = window.electron.desktopBehavior.onSnapshotChanged(snapshot => {
+      void applyDesktopBehaviorSnapshot(snapshot)
+    })
+  }
+})
+
+onUnmounted(() => {
+  stopRenderLoop()
+  stopPassThroughDetection()
+  stopLipSync()
+
+  if (model) {
+    model.destroy()
+    model = null
+  }
+
+  // 销毁全局资源（WASM 内存）
+  Live2DModel.destroyGlobal()
+
+  if (canvasRef.value) {
+    canvasRef.value.removeEventListener('mousedown', handleMouseDown)
+    canvasRef.value.removeEventListener('mousemove', handleMouseMove)
+    canvasRef.value.removeEventListener('mouseup', handleMouseUp)
+    canvasRef.value.removeEventListener('contextmenu', handleContextMenu)
+  }
+
+  window.removeEventListener('mousemove', handleWindowMouseMove)
+  window.removeEventListener('resize', handleResize)
+  disposeDesktopBehaviorListener?.()
+  disposeDesktopBehaviorListener = null
+  void setMousePassthrough(false)
+})
+
+// 暴露方法给父组件
+defineExpose({
+  loadModel,
+  getModelInfo,
+  playMotion,
+  stopBodyMotions,
+  getMotionDurationMap,
+  setExpression,
+  resetExpression,
+  playRandomMotion,
+  getModelPosition,
+  setModelPosition,
+  setModelScale,
+  getModelBounds,
+  getModelOverlayBounds,
+  getHitAreaAtPoint,
+  startLipSync,
+  stopLipSync,
+  setIdleActivity,
+  setPersistentExpressions,
+  getTextureSource: () => model?.getTextureSource(),
+  getTextureSources: () => model?.getTextureSources() || []
+})
+</script>
+
+<script lang="ts">
+export default {
+  name: 'Live2DCanvas'
+}
+</script>
+
+<style scoped>
+.live2d-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: auto; /* Canvas 可以接收鼠标事件 */
+}
+</style>

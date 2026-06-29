@@ -1,0 +1,38 @@
+<template>
+  <aside class="settings-secondary-nav">
+    <transition name="slide-fade" mode="out-in">
+      <div :key="activeGroup" class="settings-secondary-nav__header">
+        <strong>{{ $t(`settings.menu.${activeGroup}`) }}</strong>
+      </div>
+    </transition>
+
+    <transition name="list-fade" mode="out-in">
+      <div :key="activeGroup" class="settings-secondary-nav__list">
+        <button
+          v-for="item in items"
+          :key="item.key"
+          class="settings-secondary-nav__item"
+          :class="{ 'settings-secondary-nav__item--active': activeChild === item.key }"
+          type="button"
+          @click="$emit('select-child', item.key)"
+        >
+          <span>{{ $t(`settings.menu.${activeGroup}.${item.key}`) }}</span>
+        </button>
+      </div>
+    </transition>
+  </aside>
+</template>
+
+<script setup lang="ts">
+import type { SettingsChildKey, SettingsGroupKey, SettingsMenuChild } from '../settingsMenu'
+
+defineProps<{
+  activeChild: SettingsChildKey
+  activeGroup: SettingsGroupKey
+  items: SettingsMenuChild[]
+}>()
+
+defineEmits<{
+  (event: 'select-child', child: SettingsChildKey): void
+}>()
+</script>

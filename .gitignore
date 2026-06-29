@@ -1,52 +1,94 @@
-node_modules/
-release/
-out/
-build/
-.cache/
-.vite/
-.electron-gyp/
+# 依赖
+node_modules
+.pnpm-store
+
+# 构建输出
+# dist/ 与 dist-electron/ 在本仓库中保留为当前可运行快照。
+/release
+out
+build
+*.tsbuildinfo
+
+# 日志
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+lerna-debug.log*
 
-# Electron packaged output
-win-unpacked/
-dist-*.zip
-*.asar
-*.exe
-*.dll
-*.pak
-*.bin
-*.dat
-locales/
+# 数据库
+*.db
+*.db-shm
+*.db-wal
 
-# Source maps and generated diagnostics
-*.map
-*.log
+# 系统文件
+.DS_Store
+Thumbs.db
+Desktop.ini
 
-# Live2D user/model assets are intentionally not committed.
-models/
-public/models/
-dist/models/
-l2d/
-live2d/
-**/textures/
-**/texture_*/
-*.moc
-*.moc3
-*.model.json
-*.model3.json
-*.motion3.json
-*.exp3.json
-*.physics3.json
-*.pose3.json
-*.cdi3.json
-*.userdata3.json
-*.mtn
+# 环境变量
+.env
+.env.local
+.env.*.local
 
-# Live2D Cubism SDK/Core runtime is downloaded or supplied locally.
+# IDE
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# 临时文件
+*.tmp
+*.temp
+*.bak
+*.bak_*
+.cache
+.sisyphus/
+
+# 用户数据
+userData/
+
+# Live2D 模型资源（不上传用户导入的模型）
+public/models/*
+!public/models/.gitkeep
+*.lpk
+
+# Cubism Core 文件（构建时下载）
+public/lib/live2dcubismcore.min.js
+public/lib/live2dcubismcore.version.json
 dist/lib/live2dcubismcore.min.js
 dist/lib/live2dcubismcore.version.json
-public/lib/live2dcubismcore.min.js
-.generated/
+
+# Cubism Framework 生成目录（不包含在仓库中，从官方仓库生成）
+.generated/cubism-framework/
+
+# 历史遗留 Cubism Framework 本地副本
+src/framework/
+
+# Electron 打包产物
+win-unpacked/
+app_extracted/
+*.dmg
+*.exe
+*.zip
+*.tar.gz
+*.AppImage
+*.deb
+*.rpm
+*.asar
+
+# 测试覆盖率
+coverage/
+*.lcov
+docs/MODEL_INFO_SYNC.md
+docs/PRD-zh-CN.md
+optimization_tasks.csv
+
+
+CLAUDE.md

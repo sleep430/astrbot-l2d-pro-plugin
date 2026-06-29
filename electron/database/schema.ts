@@ -1,0 +1,608 @@
+import Database from 'better-sqlite3'
+import path from 'path'
+import crypto from 'crypto'
+import fs from 'fs'
+import { createRequire } from 'module'
+import { normalizeMessageDirection, type MessageDirection } from './messageDirection'
+import { buildMessageKeywordSearchCondition } from './messageSearch'
+import { resolveBetterSqliteNativeBindingPath } from './nativeBinding'
+import { USER_CONFIG_KEYS } from '../../src/shared/metadata'
+import { getAppDataPath } from '../utils/appPaths'
+import { t } from '../../src/i18n/mainProcess'
+
+let db: Database.Database | null = null
+const require = createRequire(import.meta.url)
+const CURRENT_DB_VERSION = 2
+const USER_PROFILE_CONFIG_KEYS = {
+  userId: USER_CONFIG_KEYS.userId,
+  userName: USER_CONFIG_KEYS.userName
+} as const
+
+function setDatabaseVersion(database: Database.Database, version: number): void {
+  database.pragma(`user_version = ${Math.max(0, Math.floor(version))}`)
+}
+
+function getDatabaseVersion(database: Database.Database): number {
+  const version = database.pragma('user_version', { simple: true })
+  return Number.isFinite(version) ? Math.max(0, Math.floor(Number(version))) : 0
+}
+
+function migrateToV1(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS user_config (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message_id TEXT UNIQUE NOT NULL,
+      session_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      user_name TEXT,
+      message_type TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      content TEXT NOT NULL,
+      raw_text TEXT,
+      timestamp INTEGER NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages(timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_type ON messages(message_type);
+    CREATE INDEX IF NOT EXISTS idx_messages_session_direction_timestamp ON messages(session_id, direction, timestamp DESC);
+
+    CREATE TABLE IF NOT EXISTS performances (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message_id TEXT NOT NULL,
+      sequence TEXT NOT NULL,
+      duration INTEGER,
+      interrupted INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (message_id) REFERENCES messages(message_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_performances_message ON performances(message_id);
+
+    CREATE TABLE IF NOT EXISTS statistics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,
+      hour INTEGER,
+      message_count INTEGER DEFAULT 0,
+      text_count INTEGER DEFAULT 0,
+      image_count INTEGER DEFAULT 0,
+      audio_count INTEGER DEFAULT 0,
+      video_count INTEGER DEFAULT 0,
+      motion_usage TEXT,
+      expression_usage TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_statistics_date_hour ON statistics(date, hour);
+  `)
+
+  setDatabaseVersion(database, 1)
+}
+
+function migrateToV2(database: Database.Database): void {
+  database.exec(`
+    CREATE TABLE IF NOT EXISTS message_resources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      message_id TEXT NOT NULL,
+      content_index INTEGER NOT NULL,
+      media_type TEXT NOT NULL,
+      mime TEXT NOT NULL,
+      file_name TEXT,
+      size_bytes INTEGER NOT NULL,
+      sha256 TEXT NOT NULL,
+      source_kind TEXT,
+      source_url TEXT,
+      source_rid TEXT,
+      data BLOB NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(message_id, content_index),
+      FOREIGN KEY (message_id) REFERENCES messages(message_id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_message_resources_message_id ON message_resources(message_id);
+    CREATE INDEX IF NOT EXISTS idx_message_resources_sha256 ON message_resources(sha256);
+  `)
+
+  setDatabaseVersion(database, 2)
+}
+
+function runSchemaMigrations(database: Database.Database): void {
+  let version = getDatabaseVersion(database)
+
+  if (version < 1) {
+    migrateToV1(database)
+    version = 1
+  }
+
+  if (version < 2) {
+    migrateToV2(database)
+    version = 2
+  }
+
+  if (version !== CURRENT_DB_VERSION) {
+    setDatabaseVersion(database, CURRENT_DB_VERSION)
+  }
+}
+
+function ensureMessageSearchIndex(database: Database.Database): void {
+  database.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+      raw_text,
+      content='messages',
+      content_rowid='id',
+      tokenize='trigram'
+    );
+
+    CREATE TRIGGER IF NOT EXISTS messages_fts_ai AFTER INSERT ON messages BEGIN
+      INSERT INTO messages_fts(rowid, raw_text)
+      VALUES (new.id, COALESCE(new.raw_text, ''));
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS messages_fts_ad AFTER DELETE ON messages BEGIN
+      INSERT INTO messages_fts(messages_fts, rowid, raw_text)
+      VALUES ('delete', old.id, COALESCE(old.raw_text, ''));
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS messages_fts_au AFTER UPDATE ON messages BEGIN
+      INSERT INTO messages_fts(messages_fts, rowid, raw_text)
+      VALUES ('delete', old.id, COALESCE(old.raw_text, ''));
+      INSERT INTO messages_fts(rowid, raw_text)
+      VALUES (new.id, COALESCE(new.raw_text, ''));
+    END;
+  `)
+
+  const messageCount =
+    (
+      database.prepare('SELECT COUNT(*) AS count FROM messages').get() as
+        | { count?: number }
+        | undefined
+    )?.count || 0
+  if (messageCount === 0) {
+    return
+  }
+
+  const indexCount =
+    (
+      database.prepare('SELECT COUNT(*) AS count FROM messages_fts').get() as
+        | { count?: number }
+        | undefined
+    )?.count || 0
+  if (indexCount !== messageCount) {
+    database.prepare("INSERT INTO messages_fts(messages_fts) VALUES ('rebuild')").run()
+  }
+}
+
+/**
+ * 初始化数据库
+ */
+export function initDatabase(): Database.Database {
+  if (db) return db
+
+  const dbPath = path.join(getAppDataPath(), 'history.db')
+  console.log('[数据库] 使用路径:', dbPath)
+
+  const betterSqlitePackageJsonPath = require.resolve('better-sqlite3/package.json')
+  const nativeBindingPath = resolveBetterSqliteNativeBindingPath(betterSqlitePackageJsonPath)
+  db = fs.existsSync(nativeBindingPath)
+    ? new Database(dbPath, { nativeBinding: nativeBindingPath })
+    : new Database(dbPath)
+
+  // 启用 WAL 模式以提升性能
+  db.pragma('journal_mode = WAL')
+  db.pragma('foreign_keys = ON')
+
+  runSchemaMigrations(db)
+
+  ensureMessageSearchIndex(db)
+
+  console.log('[数据库] 初始化完成:', dbPath)
+  return db
+}
+
+/**
+ * 获取数据库实例
+ */
+export function getDatabase(): Database.Database {
+  if (!db) {
+    throw new Error(t('error.databaseNotInitialized'))
+  }
+  return db
+}
+
+/**
+ * 关闭数据库
+ */
+export function closeDatabase(): void {
+  if (db) {
+    db.close()
+    db = null
+    console.log('[数据库] 已关闭')
+  }
+}
+
+// 类型定义
+export interface MessageRecord {
+  messageId: string
+  sessionId: string
+  userId: string
+  userName?: string
+  messageType: 'friend' | 'group' | 'notify'
+  direction: MessageDirection | 'input' | 'output'
+  content: any
+  rawText?: string
+  timestamp: number
+}
+
+export interface PerformanceRecord {
+  messageId: string
+  sequence: any[]
+  duration?: number
+  interrupted: boolean
+}
+
+export interface StatisticsData {
+  date: string
+  hour: number
+  messageCount: number
+  textCount: number
+  imageCount: number
+  audioCount: number
+  videoCount: number
+  motionUsage: Record<string, number>
+  expressionUsage: Record<string, number>
+}
+
+/**
+ * 保存消息记录
+ */
+export function saveMessage(record: MessageRecord): void {
+  const db = getDatabase()
+  const normalizedDirection = normalizeMessageDirection(record.direction)
+  if (!normalizedDirection) {
+    throw new Error(`无效的消息方向: ${record.direction}`)
+  }
+
+  const stmt = db.prepare(`
+    INSERT INTO messages (
+      message_id, session_id, user_id, user_name,
+      message_type, direction, content, raw_text, timestamp
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(message_id) DO UPDATE SET
+      session_id = excluded.session_id,
+      user_id = excluded.user_id,
+      user_name = excluded.user_name,
+      message_type = excluded.message_type,
+      direction = excluded.direction,
+      content = excluded.content,
+      raw_text = excluded.raw_text,
+      timestamp = excluded.timestamp
+  `)
+
+  stmt.run(
+    record.messageId,
+    record.sessionId,
+    record.userId,
+    record.userName || null,
+    record.messageType,
+    normalizedDirection,
+    JSON.stringify(record.content),
+    record.rawText || null,
+    record.timestamp
+  )
+}
+
+/**
+ * 保存表演记录
+ */
+export function savePerformance(record: PerformanceRecord): void {
+  const db = getDatabase()
+  const stmt = db.prepare(`
+    INSERT INTO performances (message_id, sequence, duration, interrupted)
+    VALUES (?, ?, ?, ?)
+  `)
+
+  stmt.run(
+    record.messageId,
+    JSON.stringify(record.sequence),
+    record.duration || null,
+    record.interrupted ? 1 : 0
+  )
+}
+
+export function updateMessageContent(messageId: string, content: unknown): void {
+  const db = getDatabase()
+  db.prepare(
+    `
+    UPDATE messages
+    SET content = ?
+    WHERE message_id = ?
+  `
+  ).run(JSON.stringify(content), messageId)
+}
+
+export function updatePerformanceSequenceByMessageId(messageId: string, sequence: unknown): void {
+  const db = getDatabase()
+  db.prepare(
+    `
+    UPDATE performances
+    SET sequence = ?
+    WHERE message_id = ?
+  `
+  ).run(JSON.stringify(sequence), messageId)
+}
+
+export function deleteHistoryMessageByMessageId(messageId: string): void {
+  const db = getDatabase()
+  const transaction = db.transaction(() => {
+    db.prepare('DELETE FROM performances WHERE message_id = ?').run(messageId)
+    db.prepare('DELETE FROM message_resources WHERE message_id = ?').run(messageId)
+    db.prepare('DELETE FROM messages WHERE message_id = ?').run(messageId)
+  })
+  transaction()
+}
+
+type MessageFilterOptions = {
+  startDate?: number
+  endDate?: number
+  messageType?: string
+  direction?: string
+  keyword?: string
+}
+
+function buildMessageWhereClause(options: MessageFilterOptions): { clause: string; params: any[] } {
+  let sql = ' WHERE 1=1'
+  const params: any[] = []
+
+  if (options.startDate) {
+    sql += ' AND timestamp >= ?'
+    params.push(options.startDate)
+  }
+
+  if (options.endDate) {
+    sql += ' AND timestamp <= ?'
+    params.push(options.endDate)
+  }
+
+  if (options.messageType) {
+    sql += ' AND message_type = ?'
+    params.push(options.messageType)
+  }
+
+  if (options.direction) {
+    const normalizedDirection = normalizeMessageDirection(options.direction)
+    if (!normalizedDirection) {
+      return { clause: '__INVALID__', params: [] }
+    }
+    sql += ' AND direction = ?'
+    params.push(normalizedDirection)
+  }
+
+  if (options.keyword) {
+    const searchCondition = buildMessageKeywordSearchCondition(options.keyword)
+    sql += searchCondition.clause
+    params.push(...searchCondition.params)
+  }
+
+  return { clause: sql, params }
+}
+
+/**
+ * 查询消息历史
+ */
+export function getMessages(options: {
+  limit?: number
+  offset?: number
+  startDate?: number
+  endDate?: number
+  messageType?: string
+  direction?: string
+  keyword?: string
+}): any[] {
+  const db = getDatabase()
+  const { clause, params } = buildMessageWhereClause(options)
+  if (clause === '__INVALID__') return []
+
+  let sql = `SELECT * FROM messages${clause}`
+  sql += ' ORDER BY timestamp ASC'
+
+  if (options.limit) {
+    sql += ' LIMIT ?'
+    params.push(options.limit)
+  }
+
+  if (options.offset) {
+    sql += ' OFFSET ?'
+    params.push(options.offset)
+  }
+
+  const stmt = db.prepare(sql)
+  return stmt.all(...params)
+}
+
+/**
+ * 更新统计数据
+ */
+export function updateStatistics(data: StatisticsData): void {
+  const db = getDatabase()
+  const stmt = db.prepare(`
+    INSERT INTO statistics (
+      date, hour, message_count, text_count, image_count,
+      audio_count, video_count, motion_usage, expression_usage
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(date, hour) DO UPDATE SET
+      message_count = message_count + excluded.message_count,
+      text_count = text_count + excluded.text_count,
+      image_count = image_count + excluded.image_count,
+      audio_count = audio_count + excluded.audio_count,
+      video_count = video_count + excluded.video_count,
+      motion_usage = excluded.motion_usage,
+      expression_usage = excluded.expression_usage,
+      updated_at = CURRENT_TIMESTAMP
+  `)
+
+  stmt.run(
+    data.date,
+    data.hour,
+    data.messageCount,
+    data.textCount,
+    data.imageCount,
+    data.audioCount,
+    data.videoCount,
+    JSON.stringify(data.motionUsage),
+    JSON.stringify(data.expressionUsage)
+  )
+}
+
+/**
+ * 获取统计数据
+ */
+export function getStatistics(startDate: string, endDate: string): any[] {
+  const db = getDatabase()
+  const stmt = db.prepare(`
+    SELECT * FROM statistics
+    WHERE date BETWEEN ? AND ?
+    ORDER BY date, hour
+  `)
+
+  return stmt.all(startDate, endDate)
+}
+
+/**
+ * 获取平均响应时长（毫秒）
+ */
+export function getAverageResponseTime(startDate: number, endDate: number): number {
+  const db = getDatabase()
+  const stmt = db.prepare(`
+    SELECT AVG(
+      incoming.timestamp - (
+        SELECT MAX(outgoing.timestamp)
+        FROM messages outgoing
+        WHERE outgoing.session_id = incoming.session_id
+          AND outgoing.direction = 'outgoing'
+          AND outgoing.timestamp <= incoming.timestamp
+      )
+    ) AS avg_response_time
+    FROM messages incoming
+    WHERE incoming.direction = 'incoming'
+      AND incoming.timestamp BETWEEN ? AND ?
+      AND EXISTS (
+        SELECT 1
+        FROM messages outgoing
+        WHERE outgoing.session_id = incoming.session_id
+          AND outgoing.direction = 'outgoing'
+          AND outgoing.timestamp <= incoming.timestamp
+      )
+  `)
+
+  const result = stmt.get(startDate, endDate) as { avg_response_time?: number | null } | undefined
+  const average = result?.avg_response_time
+  return Number.isFinite(average) ? Math.round(average as number) : 0
+}
+
+/**
+ * 获取消息总数
+ */
+export function getMessagesCount(options: {
+  startDate?: number
+  endDate?: number
+  messageType?: string
+  direction?: string
+  keyword?: string
+}): number {
+  const db = getDatabase()
+  const { clause, params } = buildMessageWhereClause(options)
+  if (clause === '__INVALID__') return 0
+
+  const stmt = db.prepare(`SELECT COUNT(*) as count FROM messages${clause}`)
+  const result = stmt.get(...params) as any
+  return result.count
+}
+
+/**
+ * 清空历史记录
+ */
+export function clearHistory(): void {
+  const db = getDatabase()
+  db.exec(`
+    DELETE FROM performances;
+    DELETE FROM message_resources;
+    DELETE FROM messages;
+    DELETE FROM statistics;
+    VACUUM;
+  `)
+  console.log('[数据库] 历史记录已清空')
+}
+
+/**
+ * 获取用户配置
+ */
+export function getUserConfig(key: string): string | null {
+  const db = getDatabase()
+  const stmt = db.prepare('SELECT value FROM user_config WHERE key = ?')
+  const result = stmt.get(key) as any
+  return result ? result.value : null
+}
+
+/**
+ * 设置用户配置
+ */
+export function setUserConfig(key: string, value: string): void {
+  const db = getDatabase()
+  const stmt = db.prepare(`
+    INSERT INTO user_config (key, value, updated_at)
+    VALUES (?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(key) DO UPDATE SET
+      value = excluded.value,
+      updated_at = CURRENT_TIMESTAMP
+  `)
+  stmt.run(key, value)
+}
+
+/**
+ * 获取或生成用户ID
+ * user_id 是设备级标识，首次生成后永不变更，与用户名无关
+ */
+export function getUserId(): string {
+  let userId = getUserConfig(USER_PROFILE_CONFIG_KEYS.userId)
+  if (!userId) {
+    // 生成设备级 UUID，确保跨设备唯一性
+    userId = crypto.randomUUID()
+    setUserConfig(USER_PROFILE_CONFIG_KEYS.userId, userId)
+  }
+  return userId
+}
+
+/**
+ * 获取用户名称
+ */
+export function getUserName(): string | null {
+  const userName = getUserConfig(USER_PROFILE_CONFIG_KEYS.userName)
+  // 如果用户名为空或无效，返回 null（触发欢迎窗口）
+  if (!userName || userName.trim() === '') {
+    return null
+  }
+  return userName
+}
+
+/**
+ * 设置用户名称
+ */
+export function setUserName(name: string): void {
+  setUserConfig(USER_PROFILE_CONFIG_KEYS.userName, name)
+}
+
+/**
+ * 清空用户配置
+ */
+export function clearUserConfig(): void {
+  const db = getDatabase()
+  db.exec('DELETE FROM user_config')
+  console.log('[数据库] 用户配置已清空')
+}

@@ -1,0 +1,343 @@
+/**
+ * L2D-Bridge Protocol 类型定义
+ */
+
+// 基础数据包结构
+export interface BasePacket {
+  op: string
+  id: string
+  ts: number
+  payload?: any
+  error?: {
+    code: number
+    message: string
+  }
+}
+
+// 操作码常量
+export const OP = {
+  // 系统级
+  SYS_HANDSHAKE: 'sys.handshake',
+  SYS_HANDSHAKE_ACK: 'sys.handshake_ack',
+  SYS_PING: 'sys.ping',
+  SYS_PONG: 'sys.pong',
+  SYS_ERROR: 'sys.error',
+
+  // 输入
+  INPUT_MESSAGE: 'input.message',
+  INPUT_TOUCH: 'input.touch',
+  INPUT_SHORTCUT: 'input.shortcut',
+
+  // 表演
+  PERFORM_SHOW: 'perform.show',
+  PERFORM_INTERRUPT: 'perform.interrupt',
+
+  // 资源
+  RESOURCE_PREPARE: 'resource.prepare',
+  RESOURCE_COMMIT: 'resource.commit',
+  RESOURCE_GET: 'resource.get',
+  RESOURCE_RELEASE: 'resource.release',
+  RESOURCE_PROGRESS: 'resource.progress',
+
+  // 状态
+  STATE_READY: 'state.ready',
+  STATE_PLAYING: 'state.playing',
+  STATE_CONFIG: 'state.config',
+  STATE_MODEL: 'state.model', // 模型信息更新
+
+  // 桌面感知
+  DESKTOP_WINDOW_LIST: 'desktop.window.list',
+  DESKTOP_WINDOW_ACTIVE: 'desktop.window.active',
+  DESKTOP_CAPTURE_SCREENSHOT: 'desktop.capture.screenshot',
+
+  // 桌面工具调用
+  DESKTOP_TOOL_CALL: 'desktop.tool.call',
+
+  // STT（语音转文字）
+  STT_TRANSCRIBE: 'stt.transcribe',
+  STT_RESULT: 'stt.result'
+} as const
+
+// 错误码
+export const ERROR_CODE = {
+  AUTH_FAILED: 4001,
+  VERSION_MISMATCH: 4002,
+  INVALID_PACKET: 4003,
+  UNSUPPORTED_OP: 4004,
+  RATE_LIMITED: 4029,
+  INTERNAL_ERROR: 5000,
+  RESOURCE_NOT_FOUND: 5001,
+  RESOURCE_QUOTA_EXCEEDED: 5002,
+  RESOURCE_INVALID_STATE: 5003,
+  RESOURCE_UPLOAD_FAILED: 5004,
+  RESOURCE_DOWNLOAD_FAILED: 5005,
+  RESOURCE_IO_ERROR: 5006
+} as const
+
+// 握手请求
+export interface HandshakePayload {
+  version: string
+  clientId: string
+  token?: string
+  tools?: DesktopToolDeclaration[]
+  model?: StateModelPayload
+}
+
+// 握手确认
+export interface HandshakeAckPayload {
+  sessionId?: string
+  userId?: string
+  session?: {
+    sessionId: string
+    userId: string
+  }
+  capabilities: string[]
+  config: {
+    maxMessageLength: number
+    supportedImageFormats: string[]
+    supportedAudioFormats: string[]
+    maxInlineBytes: number
+    resourceBaseUrl: string
+    resourcePath?: string
+  }
+}
+
+// 输入消息内容
+export interface MessageContent {
+  type: 'text' | 'image' | 'audio' | 'video' | 'file'
+  text?: string
+  url?: string
+  inline?: string
+  rid?: string
+  name?: string
+  mime?: string
+  bytes?: Uint8Array | ArrayBuffer | number[]
+}
+
+// 输入消息载荷
+export interface InputMessagePayload {
+  content: MessageContent[]
+  metadata: {
+    userId: string
+    userName?: string
+    sessionId: string
+    messageType: 'friend' | 'group' | 'notify'
+  }
+}
+
+export interface PerformExpressionComboItem {
+  id: string
+  weight?: number
+}
+
+export interface PerformExpressionSemanticItem {
+  tag: string
+  weight?: number
+}
+
+export type PerformExpressionResetPolicy = 'previous' | 'neutral' | 'keep'
+
+export interface ModelExpressionCapabilities {
+  expressionCombo: boolean
+  semanticExpression: boolean
+  expressionProfile: boolean
+}
+
+export interface ModelExpressionCatalogItem {
+  id: string
+  aliases: string[]
+  tags: string[]
+  conflictGroups: string[]
+  supportsCombo: boolean
+}
+
+export interface ModelDiscoveryInfo {
+  mode: 'standard' | 'hybrid' | 'compatibility'
+  sources: Array<'model3' | 'companion' | 'scan'>
+  companionFiles: string[]
+  standardDeclaredExpressions: number
+  standardDeclaredMotionGroups: number
+  discoveredExpressions: number
+  discoveredMotionGroups: number
+  scannedExpressionCount: number
+  scannedMotionCount: number
+  warnings: string[]
+}
+
+export interface StateModelPayload {
+  version?: string
+  name?: string
+  modelName?: string
+  motionGroups?: Record<string, Array<{ index: number; file: string }>>
+  motions?: Array<{ id: string; name: string; category: string; duration: number }>
+  expressions?: string[] | Array<{ id: string; name: string }>
+  capabilities?:
+    | ModelExpressionCapabilities
+    | { idleMode: string; llmControlled: boolean; expressionCombo?: boolean }
+  expressionCatalog?: ModelExpressionCatalogItem[]
+  semanticPresets?: Record<string, string[]>
+  discovery?: ModelDiscoveryInfo
+}
+
+// 表演序列元素
+export interface PerformElement {
+  type: 'text' | 'tts' | 'audio' | 'motion' | 'expression' | 'image' | 'video' | 'wait' | 'delay'
+
+  // 文字气泡
+  content?: string
+  duration?: number
+  position?: 'top' | 'center' | 'bottom'
+
+  // TTS
+  text?: string
+  url?: string
+  inline?: string
+  rid?: string
+  ttsMode?: 'local' | 'remote'
+  volume?: number
+  speed?: number
+
+  // 动作（v1 group/index，v2 name）
+  name?: string
+  group?: string
+  index?: number
+  priority?: number
+  loop?: boolean
+  fadeIn?: number
+  fadeOut?: number
+  motionType?: string
+
+  // 表情
+  id?: string | number
+  combo?: PerformExpressionComboItem[]
+  semantic?: PerformExpressionSemanticItem[]
+  fade?: number
+  holdMs?: number
+  resetPolicy?: PerformExpressionResetPolicy
+
+  // 图片/视频
+  autoplay?: boolean
+}
+
+// 表演载荷
+export interface PerformShowPayload {
+  interrupt: boolean
+  sequence: PerformElement[]
+  interruptible?: boolean
+}
+
+// 资源引用
+export interface ResourceReference {
+  url?: string
+  rid?: string
+  inline?: string
+}
+
+// 触摸事件
+export interface TouchPayload {
+  x: number
+  y: number
+  action: 'tap' | 'double_tap' | 'long_press' | 'drag'
+}
+
+// 快捷键事件
+export interface ShortcutPayload {
+  key: string
+  modifiers: string[]
+}
+
+// 状态载荷
+export interface StateReadyPayload {
+  ready: boolean
+}
+
+export interface StatePlayingPayload {
+  playing: boolean
+  current?: number
+  total?: number
+}
+
+export interface StateConfigPayload {
+  config: Record<string, any>
+}
+
+// STT 转录请求载荷
+export interface STTTranscribePayload {
+  audio: {
+    inline?: string // base64 编码的音频
+    url?: string // 音频 URL
+    rid?: string // 资源 ID
+  }
+  format: string // 音频格式：'wav', 'webm', 'mp3', 'ogg'
+  language?: string // 语言代码：'zh-CN', 'en-US'
+}
+
+// STT 转录结果载荷
+export interface STTResultPayload {
+  text: string // 识别的文字
+  confidence?: number // 置信度 0-1
+  language?: string // 检测到的语言
+}
+
+// 桌面感知 - 窗口信息
+export interface DesktopWindowInfo {
+  id: string
+  title: string
+  processName: string
+  isActive?: boolean
+  bounds?: { x: number; y: number; width: number; height: number }
+}
+
+// 桌面感知 - 窗口列表响应
+export interface DesktopWindowListPayload {
+  windows: DesktopWindowInfo[]
+}
+
+// 桌面感知 - 活跃窗口响应
+export interface DesktopWindowActivePayload {
+  window: DesktopWindowInfo | null
+}
+
+// 桌面感知 - 截图请求
+export interface DesktopCaptureRequestPayload {
+  target: 'desktop' | 'active' | 'window'
+  windowId?: string
+  format?: string
+  quality?: number
+  maxWidth?: number
+}
+
+// 桌面感知 - 截图响应
+export interface DesktopCaptureResponsePayload {
+  image: string // data:image/png;base64,...
+  window?: { id?: string; title: string; processName?: string }
+  width: number
+  height: number
+}
+
+// 桌面工具声明（握手时由客户端发送）
+export interface DesktopToolParam {
+  name: string
+  type: string // string | number | boolean | array | object
+  description: string
+  required?: boolean
+}
+
+export interface DesktopToolDeclaration {
+  name: string
+  description: string
+  parameters: DesktopToolParam[]
+}
+
+// 桌面工具调用（服务端 → 客户端请求）
+export interface DesktopToolCallPayload {
+  tool: string
+  args: Record<string, any>
+}
+
+// 桌面工具调用响应（客户端 → 服务端）
+export interface DesktopToolResultPayload {
+  tool: string
+  result?: any
+  error?: string
+}

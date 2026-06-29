@@ -1,0 +1,23 @@
+allowBuilds:
+  '@parcel/watcher': true
+  active-win: true
+  better-sqlite3: true
+  bufferutil: true
+  electron: true
+  electron-winstaller: true
+  esbuild: true
+  extract-file-icon: true
+  koffi: true
+  node-window-manager: true
+  sharp: true
+  utf-8-validate: true
+onlyBuiltDependencies:
+  - '@parcel/watcher'
+  - active-win
+  - better-sqlite3
+  - electron
+  - esbuild
+  - extract-file-icon
+  - node-window-manager
+  - sharp
+  - vue-demi

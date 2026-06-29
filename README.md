@@ -1,6 +1,6 @@
 # AstrBot Live2D Desktop Pro
 
-> 当前版本：`1.0.0`  
+> 当前版本：`1.0.0`
 > 基于 [lxfight/astrbot-live2d-desktop](https://github.com/lxfight/astrbot-live2d-desktop) 改造的 Live2D 桌面客户端 Pro 版。
 
 这是一个面向 AstrBot 的 Live2D 桌面客户端改版。它继承了原项目的 Electron + Vue 3 桌面端、AstrBot WebSocket Bridge、Cubism 3/4 模型渲染、消息展示、桌面助手能力和模型管理能力，并在此基础上补充了更偏“桌宠/Live2DViewerEX 使用习惯”的模型导入、点击交互、表情测试和自回归体验。

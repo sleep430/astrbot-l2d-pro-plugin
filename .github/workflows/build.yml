@@ -1,0 +1,296 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: '20'
+  PNPM_VERSION: '10.28.2'
+
+jobs:
+  prepare_release:
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.prepare.outputs.should_release }}
+      version: ${{ steps.prepare.outputs.version }}
+      release_tag: ${{ steps.prepare.outputs.release_tag }}
+      release_name: ${{ steps.prepare.outputs.release_name }}
+      is_prerelease: ${{ steps.prepare.outputs.is_prerelease }}
+      previous_tag: ${{ steps.prepare.outputs.previous_tag }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Resolve release context
+        id: prepare
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+
+          VERSION=$(node -p "require('./package.json').version")
+          RELEASE_TAG="v${VERSION}"
+          RELEASE_NAME="Release ${RELEASE_TAG}"
+          PREVIOUS_TAG=$(git tag --sort=-version:refname --list 'v*' | grep -v "^${RELEASE_TAG}$" | head -n 1 || true)
+
+          if [[ "$VERSION" == *-* ]]; then
+            IS_PRERELEASE=true
+          else
+            IS_PRERELEASE=false
+          fi
+
+          if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            SHOULD_RELEASE=true
+            echo "手动触发发布 ${RELEASE_TAG}"
+          elif [[ "$REF" == refs/tags/* ]]; then
+            PUSHED_TAG="${REF#refs/tags/}"
+            if [[ "$PUSHED_TAG" != "$RELEASE_TAG" ]]; then
+              echo "::error::推送的 tag ${PUSHED_TAG} 与 package.json 版本 ${VERSION} 不一致。"
+              echo "请先更新 package.json 的 version 字段为 ${PUSHED_TAG#v}，再推送 tag。"
+              exit 1
+            fi
+            SHOULD_RELEASE=true
+            echo "Tag 推送触发发布 ${RELEASE_TAG}"
+          else
+            SHOULD_RELEASE=false
+            echo "非 tag 推送且非手动触发，跳过发布。"
+          fi
+
+          echo "版本: ${VERSION}"
+          echo "发布 tag: ${RELEASE_TAG}"
+          echo "最近已发布 tag: ${PREVIOUS_TAG:-<none>}"
+          echo "是否继续发布: ${SHOULD_RELEASE}"
+
+          echo "should_release=${SHOULD_RELEASE}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "release_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "release_name=${RELEASE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=${IS_PRERELEASE}" >> "$GITHUB_OUTPUT"
+          echo "previous_tag=${PREVIOUS_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Skip release
+        if: steps.prepare.outputs.should_release != 'true'
+        run: echo "当前提交无需发布。推送 v* tag 或手动触发 workflow_dispatch 以启动发布。"
+
+  build_core:
+    needs: prepare_release
+    if: needs.prepare_release.outputs.should_release == 'true'
+    runs-on: ${{ matrix.os }}
+    concurrency:
+      group: build-core-${{ needs.prepare_release.outputs.release_tag }}-${{ matrix.artifact_name }}
+      cancel-in-progress: false
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rebuild_platform: win32
+            arch: x64
+            artifact_name: release-windows-x64
+            pack_command: pnpm exec electron-builder --win --x64 --publish never
+            files: |
+              release/astrbot-live2d-desktop-v*-win-x64.exe
+              release/astrbot-live2d-desktop-v*-portable-x64.exe
+              release/*.blockmap
+              release/latest.yml
+              release/latest-portable-x64.yml
+          - os: windows-latest
+            rebuild_platform: win32
+            arch: arm64
+            artifact_name: release-windows-arm64
+            pack_command: pnpm exec electron-builder --win --arm64 --publish never
+            files: |
+              release/astrbot-live2d-desktop-v*-win-arm64.exe
+              release/astrbot-live2d-desktop-v*-portable-arm64.exe
+              release/*.blockmap
+              release/latest-portable-arm64.yml
+          - os: macos-latest
+            rebuild_platform: darwin
+            arch: x64
+            artifact_name: release-macos-x64
+            pack_command: pnpm exec electron-builder --mac --x64 --publish never
+            files: |
+              release/astrbot-live2d-desktop-v*-mac-x64.dmg
+              release/astrbot-live2d-desktop-v*-mac-x64.zip
+              release/*.blockmap
+              release/latest*.yml
+          - os: macos-latest
+            rebuild_platform: darwin
+            arch: arm64
+            artifact_name: release-macos-arm64
+            pack_command: pnpm exec electron-builder --mac --arm64 --publish never
+            files: |
+              release/astrbot-live2d-desktop-v*-mac-arm64.dmg
+              release/astrbot-live2d-desktop-v*-mac-arm64.zip
+              release/*.blockmap
+          - os: ubuntu-latest
+            rebuild_platform: linux
+            arch: x64
+            artifact_name: release-linux-x64-core
+            pack_command: pnpm run pack:linux:core -- --x64
+            files: |
+              release/astrbot-live2d-desktop-v*-linux-x86_64.AppImage
+              release/astrbot-live2d-desktop-v*-linux-amd64.deb
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup pnpm via corepack
+        run: |
+          corepack enable
+          corepack prepare pnpm@${{ env.PNPM_VERSION }} --activate
+          pnpm --version
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Cache Cubism assets
+        uses: actions/cache@v4
+        with:
+          path: |
+            .generated/cubism-framework
+            public/lib/live2dcubismcore.min.js
+          key: cubism-assets-${{ hashFiles('package.json') }}
+
+      - name: Setup Python (for node-gyp)
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install Python setuptools
+        run: pip install setuptools
+
+      - name: Install Linux packaging dependencies
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libopenjp2-tools
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Frontend and Electron Bundles
+        run: pnpm run build:vite
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Rebuild Native Dependencies (${{ matrix.rebuild_platform }}-${{ matrix.arch }})
+        run: pnpm run rebuild -- --platform=${{ matrix.rebuild_platform }} --arch=${{ matrix.arch }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Package ${{ matrix.artifact_name }}
+        run: ${{ matrix.pack_command }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Generate portable update metadata
+        if: startsWith(matrix.os, 'windows')
+        run: node scripts/generate-portable-update-metadata.mjs --arch=${{ matrix.arch }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.files }}
+          if-no-files-found: error
+
+  release:
+    needs:
+      - prepare_release
+      - build_core
+    if: needs.prepare_release.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-${{ needs.prepare_release.outputs.release_tag }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Generate changelog
+        id: changelog
+        shell: bash
+        env:
+          PREVIOUS_TAG: ${{ needs.prepare_release.outputs.previous_tag }}
+        run: |
+          set -euo pipefail
+
+          if [[ -n "$PREVIOUS_TAG" ]]; then
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" "${PREVIOUS_TAG}..${GITHUB_SHA}")
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" "${GITHUB_SHA}")
+          fi
+
+          if [[ -z "$CHANGELOG" ]]; then
+            CHANGELOG='- 无代码提交差异'
+          fi
+
+          echo "changelog<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGELOG" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.prepare_release.outputs.release_tag }}
+          target_commitish: ${{ github.sha }}
+          name: ${{ needs.prepare_release.outputs.release_name }}
+          body: |
+            ## 更新内容
+
+            ${{ steps.changelog.outputs.changelog }}
+
+            ## 下载说明
+
+            - Windows: `*-win-x64.exe` / `*-win-arm64.exe`（安装版），或 `*-portable-x64.exe` / `*-portable-arm64.exe`（便携版）
+            - macOS: `*-mac-x64.dmg` / `*-mac-arm64.dmg`
+            - Linux: `x64` 的 `AppImage`、`deb`
+            - Linux 扩展产物：`pacman`、`snap`、`arm64` 包通过 `Linux Extra Packages` 工作流追加上传
+
+            > 首次启动时，应用会提示下载 Live2D Cubism SDK（约 200KB），点击确定即可自动下载。
+
+            ## 相关链接
+
+            - [使用教程](https://github.com/${{ github.repository }}/blob/${{ needs.prepare_release.outputs.release_tag }}/docs/USAGE_TUTORIAL.zh-CN.md)
+            - [AstrBot Live2D 适配器](https://github.com/lxfight/astrbot_plugin_live2d_adapter)
+          draft: false
+          prerelease: ${{ needs.prepare_release.outputs.is_prerelease == 'true' }}
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

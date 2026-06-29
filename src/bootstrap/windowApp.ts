@@ -1,0 +1,227 @@
+import {
+  createApp,
+  computed,
+  defineComponent,
+  h,
+  markRaw,
+  onBeforeUnmount,
+  onMounted,
+  type Component,
+  watch
+} from 'vue'
+import { createPinia, storeToRefs } from 'pinia'
+import naive, {
+  NConfigProvider,
+  NDialogProvider,
+  NMessageProvider,
+  darkTheme,
+  lightTheme,
+  zhCN as naiveZhCN,
+  enUS as naiveEnUS,
+  dateZhCN,
+  dateEnUS
+} from 'naive-ui'
+import { useThemeStore } from '@/stores/theme'
+import { useAppearanceStore } from '@/stores/appearance'
+import { useLocaleStore } from '@/stores/locale'
+import { i18n } from '@/i18n'
+import { setupRendererLogging } from '@/utils/rendererLogger'
+import { applyWindowKindClasses, type WindowKind } from '@/utils/windowKind'
+import {
+  applySettingsAppearanceClass,
+  buildSettingsAppearanceCssVars
+} from '@/utils/settingsAppearanceCss'
+import { buildSettingsNaiveThemeOverrides } from '@/utils/settingsNaiveThemeOverrides'
+import '@/styles/global.scss'
+
+const CUBISM_CORE_SCRIPT_ID = 'cubism-core-runtime'
+const CUBISM_CORE_SCRIPT_SRC = 'cubism://core/live2dcubismcore.min.js'
+
+function applyThemeCssVars(vars: Record<string, string>): void {
+  if (typeof document === 'undefined') {
+    return
+  }
+
+  const rootStyle = document.documentElement.style
+  for (const [key, value] of Object.entries(vars)) {
+    if (rootStyle.getPropertyValue(key) !== value) {
+      rootStyle.setProperty(key, value)
+    }
+  }
+}
+
+function createWindowRoot(component: Component, windowKind: WindowKind) {
+  const targetComponent = markRaw(component)
+
+  return defineComponent({
+    name: 'WindowAppRoot',
+    setup() {
+      const themeStore = useThemeStore()
+      const appearanceStore = useAppearanceStore()
+      const localeStore = useLocaleStore()
+      const { cssVars, naiveThemeOverrides } = storeToRefs(themeStore)
+      const { resolvedColorScheme } = storeToRefs(appearanceStore)
+
+      onMounted(() => {
+        themeStore.syncFromStorage()
+        themeStore.startStorageSync()
+        appearanceStore.bindSystemSchemeListener()
+        localeStore.bindI18n()
+        window.electron?.locale?.set(localeStore.locale)
+      })
+
+      onBeforeUnmount(() => {
+        themeStore.stopStorageSync()
+      })
+
+      watch(
+        [cssVars, resolvedColorScheme],
+        ([vars, scheme]) => {
+          if (windowKind === 'settings') {
+            applySettingsAppearanceClass(scheme)
+            applyThemeCssVars({
+              ...vars,
+              ...buildSettingsAppearanceCssVars(scheme)
+            })
+          } else {
+            applyThemeCssVars(vars)
+          }
+        },
+        { immediate: true }
+      )
+
+      const naiveTheme = computed(() =>
+        resolvedColorScheme.value === 'light' ? lightTheme : darkTheme
+      )
+
+      const mergedNaiveOverrides = computed(() => {
+        const base = naiveThemeOverrides.value
+        if (windowKind !== 'settings') {
+          return base
+        }
+        return buildSettingsNaiveThemeOverrides(resolvedColorScheme.value, base)
+      })
+
+      const naiveLocale = computed(() => (localeStore.locale === 'zh-CN' ? naiveZhCN : naiveEnUS))
+      const naiveDateLocale = computed(() => (localeStore.locale === 'zh-CN' ? dateZhCN : dateEnUS))
+
+      return () =>
+        h(
+          NConfigProvider,
+          {
+            theme: naiveTheme.value,
+            themeOverrides: mergedNaiveOverrides.value,
+            locale: naiveLocale.value,
+            dateLocale: naiveDateLocale.value
+          },
+          {
+            default: () =>
+              h(NMessageProvider, null, {
+                default: () =>
+                  h(NDialogProvider, null, {
+                    default: () =>
+                      h(
+                        'div',
+                        {
+                          class: 'window-app-root',
+                          style: {
+                            width: '100%',
+                            height: '100%'
+                          }
+                        },
+                        [h(targetComponent)]
+                      )
+                  })
+              })
+          }
+        )
+    }
+  })
+}
+
+function waitForScriptLoad(script: HTMLScriptElement): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const scriptReadyState = (script as HTMLScriptElement & { readyState?: string }).readyState
+
+    if (script.dataset.loaded === 'true' || typeof Live2DCubismCore !== 'undefined') {
+      script.dataset.loaded = 'true'
+      resolve()
+      return
+    }
+
+    if (scriptReadyState === 'complete' || scriptReadyState === 'loaded') {
+      script.dataset.loaded = 'true'
+      resolve()
+      return
+    }
+
+    const cleanup = () => {
+      script.removeEventListener('load', handleLoad)
+      script.removeEventListener('error', handleError)
+    }
+
+    const handleLoad = () => {
+      script.dataset.loaded = 'true'
+      cleanup()
+      resolve()
+    }
+
+    const handleError = () => {
+      cleanup()
+      reject(new Error(`Cubism Core 加载失败: ${CUBISM_CORE_SCRIPT_SRC}`))
+    }
+
+    script.addEventListener('load', handleLoad, { once: true })
+    script.addEventListener('error', handleError, { once: true })
+  })
+}
+
+export async function ensureCubismCoreLoaded(): Promise<void> {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  if (typeof Live2DCubismCore !== 'undefined') {
+    return
+  }
+
+  const existingScript = document.getElementById(CUBISM_CORE_SCRIPT_ID) as HTMLScriptElement | null
+  if (existingScript) {
+    await waitForScriptLoad(existingScript)
+    return
+  }
+
+  const script = document.createElement('script')
+  script.id = CUBISM_CORE_SCRIPT_ID
+  script.src = CUBISM_CORE_SCRIPT_SRC
+  script.async = false
+
+  const loadPromise = waitForScriptLoad(script)
+  document.head.appendChild(script)
+  await loadPromise
+}
+
+export interface MountWindowAppOptions {
+  component: Component
+  windowKind: WindowKind
+  beforeMount?: () => Promise<void> | void
+  mountSelector?: string
+}
+
+export async function mountWindowApp(options: MountWindowAppOptions): Promise<void> {
+  const { component, windowKind, beforeMount, mountSelector = '#app' } = options
+
+  setupRendererLogging()
+  applyWindowKindClasses(windowKind)
+
+  if (beforeMount) {
+    await beforeMount()
+  }
+
+  const app = createApp(createWindowRoot(component, windowKind))
+
+  app.use(createPinia())
+  app.use(i18n)
+  app.use(naive)
+  app.mount(mountSelector)
+}

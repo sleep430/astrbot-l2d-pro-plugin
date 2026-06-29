@@ -28,7 +28,7 @@ import op from "tty";
 import Ps from "os";
 import { spawn as Ay } from "node:child_process";
 import Yt from "fs/promises";
-const Py = "sleep430", Iy = { protocol: { version: "1.0.0" }, storage: { userConfig: { userId: "user_id", userName: "user_name", autoUpdateEnabled: "app_auto_update_enabled", screenshotDefaultTarget: "desktop_capture_default_target", screenshotQuality: "desktop_capture_quality", screenshotMaxWidth: "desktop_capture_max_width", connectionSettingsV3: "connection_settings_v3", connectionBehaviorSettingsV1: "connection_behavior_settings_v1", alwaysOnTop: "tray_always_on_top", fullPassThrough: "tray_pass_through_mode", dynamicPassThrough: "desktop_dynamic_pass_through", autoDetectFullscreen: "tray_game_mode" } } }, Dy = { appId: "com.astrbot.live2d.desktop" }, fs = {
+const Py = "lxfight <1686540385@qq.com>", Iy = { protocol: { version: "1.0.0" }, storage: { userConfig: { userId: "user_id", userName: "user_name", autoUpdateEnabled: "app_auto_update_enabled", screenshotDefaultTarget: "desktop_capture_default_target", screenshotQuality: "desktop_capture_quality", screenshotMaxWidth: "desktop_capture_max_width", connectionSettingsV3: "connection_settings_v3", connectionBehaviorSettingsV1: "connection_behavior_settings_v1", alwaysOnTop: "tray_always_on_top", fullPassThrough: "tray_pass_through_mode", dynamicPassThrough: "desktop_dynamic_pass_through", autoDetectFullscreen: "tray_game_mode" } } }, Dy = { appId: "com.astrbot.live2d.desktop" }, fs = {
   author: Py,
   desktopMetadata: Iy,
   build: Dy
