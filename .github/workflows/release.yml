@@ -82,7 +82,9 @@ jobs:
             Write-Host "Release $env:TAG_NAME already exists; skipping build."
           } else {
             "exists=false" >> $env:GITHUB_OUTPUT
+            Write-Host "Release $env:TAG_NAME does not exist yet; continuing."
           }
+          exit 0
 
       - name: Install dependencies
         if: steps.existing_release.outputs.exists != 'true'
