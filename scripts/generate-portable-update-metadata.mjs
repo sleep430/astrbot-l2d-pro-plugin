@@ -19,7 +19,7 @@ const archArg = archArgFromOption || archArgFromFlag || null
 
 const escapedVersion = packageJson.version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 const portablePattern = new RegExp(
-  `^astrbot-live2d-desktop-v${escapedVersion}-portable-(x64|arm64)\\.exe$`,
+  `^astrbot-live2d-desktop-pro-v${escapedVersion}-portable-(x64|arm64)\\.exe$`,
   'i'
 )
 
