@@ -183,6 +183,7 @@ function cubismIdToString(value: string | CubismIdHandle | null | undefined): st
   }
   return String(value)
 }
+
 function mergeExpressionProfileAliases(
   profile: ExpressionProfile | null,
   compatibilityAliases: Record<string, string[]>
