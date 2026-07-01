@@ -11,10 +11,11 @@ import {
 
 describe('metadata', () => {
   it('exposes app metadata from a single typed entry', () => {
-    expect(APP_METADATA.displayName).toBe('AstrBot Live2D Desktop')
+    expect(APP_METADATA.displayName).toBe('AstrBot Live2D Desktop Pro')
     expect(APP_METADATA.appId).toBe('com.astrbot.live2d.desktop')
-    expect(APP_METADATA.authorName).toBe('lxfight')
-    expect(APP_LINKS.repository).toBe('https://github.com/lxfight/astrbot-live2d-desktop')
+    expect(APP_METADATA.version).toBe('1.1.0')
+    expect(APP_METADATA.authorName).toBe('sleep430')
+    expect(APP_LINKS.repository).toBe('https://github.com/sleep430/astrbot-l2d-pro-plugin')
   })
 
   it('centralizes protocol version and local storage definitions', () => {
