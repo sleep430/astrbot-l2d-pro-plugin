@@ -169,6 +169,20 @@ function uniqueAliases(values: string[]): string[] {
   return result
 }
 
+function cubismIdToString(value: string | CubismIdHandle | null | undefined): string {
+  if (!value) {
+    return ''
+  }
+  if (typeof value === 'string') {
+    return value
+  }
+  const getString = (value as { getString?: () => unknown }).getString
+  if (typeof getString === 'function') {
+    const idString = getString.call(value)
+    return idString == null ? '' : String(idString)
+  }
+  return String(value)
+}
 function mergeExpressionProfileAliases(
   profile: ExpressionProfile | null,
   compatibilityAliases: Record<string, string[]>
@@ -2235,8 +2249,11 @@ export class CubismModel {
     const seen = new Set<string>()
     const hitAreaCount = this.modelSetting.getHitAreasCount()
     for (let i = 0; i < hitAreaCount; i++) {
-      const id = this.modelSetting.getHitAreaId(i)
-      const name = this.modelSetting.getHitAreaName(i) || id
+      const id = cubismIdToString(this.modelSetting.getHitAreaId(i))
+      const name = cubismIdToString(this.modelSetting.getHitAreaName(i)) || id
+      if (!id) {
+        continue
+      }
       const key = `${id}:${name}`
       if (seen.has(key)) {
         continue
@@ -2278,8 +2295,8 @@ export class CubismModel {
         y <= bounds.bottom
       ) {
         return {
-          id: hitAreaId,
-          name: this.modelSetting.getHitAreaName(i) || hitAreaId
+          id: cubismIdToString(hitAreaId),
+          name: cubismIdToString(this.modelSetting.getHitAreaName(i)) || cubismIdToString(hitAreaId)
         }
       }
     }
