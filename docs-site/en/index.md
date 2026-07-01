@@ -43,6 +43,6 @@ features:
 - [State Model v2](./protocol/state-model-v2.md): model alias payload sent by the desktop client.
 - [Perform Show](./protocol/perform-show.md): text, media, motion, expression, and alias execution.
 - [Resources](./protocol/resources.md): `url` / `rid` / `inline` references and resource upload flow.
-- [Desktop RPC](./desktop-rpc.md): window list, active window, screenshots, and tool calls.
+- [Desktop RPC](./protocol/desktop-rpc.md): window list, active window, screenshots, and tool calls.
 - [Model Aliases](./model-config/overview.md): how to configure motion and expression names.
 - [Platform Support](./release/platform-support.md): Windows, macOS, Linux X11/Wayland capability matrix.
