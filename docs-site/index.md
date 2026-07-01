@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: AstrBot Live2D Desktop
+  name: AstrBot Live2D Desktop Pro
   text: 桌面端与桥接协议文档
   tagline: 面向 AstrBot Live2D 桌面端、适配器、模型别名、媒体资源与 L2D 桥接协议的实用参考。
   actions:
@@ -26,7 +26,7 @@ features:
 
 | 组件 | 版本 | 说明 |
 | --- | --- | --- |
-| 桌面端 | 1.5.0 | 新增 v2 alias model payload 与模型别名编辑。 |
+| 桌面端 | 1.1.0 | Pro 版发布，包含 LPK 导入、桌面点击交互、模型配置与发布修复。 |
 | 桥接协议 | 1.0.0 + v2 别名扩展 | v1 包仍兼容；v2 扩展 `state.model` 与 `perform.show`。 |
 | AstrBot 适配器 | `9689fd3` 之后的 master | 完整使用 v2 alias payload 时需要配套更新。 |
 
