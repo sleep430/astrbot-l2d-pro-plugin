@@ -1,6 +1,6 @@
 # AstrBot Live2D Desktop Pro
 
-> Version: `1.0.0`
+> Version: `1.1.0`
 > A Pro desktop-client fork based on [lxfight/astrbot-live2d-desktop](https://github.com/lxfight/astrbot-live2d-desktop).
 
 This repository contains a desktop Live2D client, not an AstrBot backend plugin. The repository name still contains `plugin` for historical reasons, but the application should be used together with the AstrBot Live2D adapter on the AstrBot side.
