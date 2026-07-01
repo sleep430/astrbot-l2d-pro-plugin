@@ -234,6 +234,12 @@ p.exposeInMainWorld("electron", {
     load: (e) => n.invoke("model:load", e),
     onLoad: (e) => r("model:load", e)
   },
+  modelConfig: {
+    load: (e) => n.invoke("modelConfig:load", e),
+    save: (e) => n.invoke("modelConfig:save", e),
+    delete: (e) => n.invoke("modelConfig:delete", e),
+    ensure: (e) => n.invoke("modelConfig:ensure", e)
+  },
   desktopAwareness: {
     getSettings: () => n.invoke("desktopAwareness:getSettings"),
     updateSettings: (e) => n.invoke("desktopAwareness:updateSettings", e),
