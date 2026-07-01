@@ -70,7 +70,7 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           "tag=v$version" >> $env:GITHUB_OUTPUT
 
-      - name: Stop if release already exists
+      - name: Check whether release exists
         id: existing_release
         shell: pwsh
         env:
@@ -80,19 +80,17 @@ jobs:
           gh release view $env:TAG_NAME *> $null
           if ($LASTEXITCODE -eq 0) {
             "exists=true" >> $env:GITHUB_OUTPUT
-            Write-Host "Release $env:TAG_NAME already exists; skipping build."
+            Write-Host "Release $env:TAG_NAME exists; assets will be refreshed."
           } else {
             "exists=false" >> $env:GITHUB_OUTPUT
-            Write-Host "Release $env:TAG_NAME does not exist yet; continuing."
+            Write-Host "Release $env:TAG_NAME does not exist yet; it will be created."
           }
           exit 0
 
       - name: Install dependencies
-        if: steps.existing_release.outputs.exists != 'true'
         run: pnpm install --no-frozen-lockfile
 
       - name: Patch package version for this release
-        if: steps.existing_release.outputs.exists != 'true'
         shell: pwsh
         env:
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
@@ -100,32 +98,29 @@ jobs:
           node -e "const fs=require('fs'); const p=JSON.parse(fs.readFileSync('package.json','utf8')); p.version=process.env.RELEASE_VERSION; fs.writeFileSync('package.json', JSON.stringify(p,null,2)+'\n')"
 
       - name: Build Windows artifacts
-        if: steps.existing_release.outputs.exists != 'true'
         run: pnpm run pack:win
 
       - name: List artifacts
-        if: steps.existing_release.outputs.exists != 'true'
         shell: pwsh
         run: Get-ChildItem release -File | Sort-Object Name | Format-Table Name, Length
 
-      - name: Create tag
-        if: steps.existing_release.outputs.exists != 'true'
+      - name: Create or move tag
         shell: pwsh
         env:
           TAG_NAME: ${{ steps.version.outputs.tag }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git tag $env:TAG_NAME
-          git push origin $env:TAG_NAME
+          git tag -f $env:TAG_NAME
+          git push origin "refs/tags/$env:TAG_NAME" --force
 
-      - name: Create GitHub release
-        if: steps.existing_release.outputs.exists != 'true'
+      - name: Create or refresh GitHub release
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ steps.version.outputs.tag }}
           RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_EXISTS: ${{ steps.existing_release.outputs.exists }}
         run: |
           $assets = Get-ChildItem release -File | Where-Object {
             $_.Name -match '\.(exe|yml|blockmap)$'
@@ -135,4 +130,9 @@ jobs:
             throw 'No release assets were produced.'
           }
 
-          gh release create $env:TAG_NAME $assets --title "L2D Pro v$env:RELEASE_VERSION" --notes-file RELEASE_NOTES_v1.1.md --latest
+          if ($env:RELEASE_EXISTS -eq 'true') {
+            gh release edit $env:TAG_NAME --title "L2D Pro v$env:RELEASE_VERSION" --notes-file RELEASE_NOTES_v1.1.md --latest
+            gh release upload $env:TAG_NAME $assets --clobber
+          } else {
+            gh release create $env:TAG_NAME $assets --title "L2D Pro v$env:RELEASE_VERSION" --notes-file RELEASE_NOTES_v1.1.md --latest
+          }
