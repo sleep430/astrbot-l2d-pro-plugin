@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: AstrBot Live2D Desktop
+  name: AstrBot Live2D Desktop Pro
   text: Desktop client and bridge protocol docs
   tagline: A practical reference for running Live2D models with AstrBot, model aliases, media resources, and the L2D bridge protocol.
   actions:
@@ -26,7 +26,7 @@ features:
 
 | Component | Version | Notes |
 | --- | --- | --- |
-| Desktop | 1.5.0 | Adds v2 alias model payloads and model alias editing. |
+| Desktop | 1.1.0 | Pro release with LPK import, desktop click interaction, model config, and release fixes. |
 | Bridge protocol | 1.0.0 + v2 alias extension | v1 packets remain compatible; v2 enriches `state.model` and `perform.show`. |
 | AstrBot adapter | master after `9689fd3` | Required for full v2 alias payload support. |
 
@@ -43,6 +43,6 @@ features:
 - [State Model v2](./protocol/state-model-v2.md): model alias payload sent by the desktop client.
 - [Perform Show](./protocol/perform-show.md): text, media, motion, expression, and alias execution.
 - [Resources](./protocol/resources.md): `url` / `rid` / `inline` references and resource upload flow.
-- [Desktop RPC](./protocol/desktop-rpc.md): window list, active window, screenshots, and tool calls.
+- [Desktop RPC](./desktop-rpc.md): window list, active window, screenshots, and tool calls.
 - [Model Aliases](./model-config/overview.md): how to configure motion and expression names.
 - [Platform Support](./release/platform-support.md): Windows, macOS, Linux X11/Wayland capability matrix.
