@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { IdleAnimator, layeredNoise, smoothNoise } from '../src/utils/cubism/IdleAnimator'
+import {
+  DEFAULT_IDLE_ACTIVITY,
+  IdleAnimator,
+  layeredNoise,
+  smoothNoise
+} from '../src/utils/cubism/IdleAnimator'
 
 const FRAME = 1 / 60
 
@@ -73,16 +78,16 @@ describe('IdleAnimator', () => {
   it('keeps every channel within its scaled amplitude and breath within [0, 1]', () => {
     const animator = new IdleAnimator()
     animator.setActivity(1)
-    // activity=1 时幅度调制系数最大（4 倍），呼吸联动通道额外加联动幅度
+    // activity=1 时幅度调制系数最大（1 倍），呼吸联动通道额外加联动幅度
     const limits: Record<string, number> = {
-      ParamAngleX: 8 * 4,
-      ParamAngleY: 5 * 4 + 0.8,
-      ParamAngleZ: 4 * 4,
-      ParamBodyAngleX: 4 * 4,
-      ParamBodyAngleY: 3 * 4 + 1.5,
-      ParamBodyAngleZ: 3 * 4,
-      ParamEyeBallX: 0.35 * 4,
-      ParamEyeBallY: 0.18 * 4
+      ParamAngleX: 8,
+      ParamAngleY: 5 + 0.8,
+      ParamAngleZ: 4,
+      ParamBodyAngleX: 4,
+      ParamBodyAngleY: 3 + 1.5,
+      ParamBodyAngleZ: 3,
+      ParamEyeBallX: 0.35,
+      ParamEyeBallY: 0.18
     }
 
     for (let i = 0; i < 3600; i++) {
@@ -125,8 +130,8 @@ describe('IdleAnimator', () => {
       livelySum += Math.abs(livelyOutput[0].value)
     }
 
-    // 0 → 0.4 倍、1 → 4 倍，幅度差应接近 10 倍
-    expect(livelySum).toBeGreaterThan(calmSum * 8)
+    // 0 → 0.15 倍、1 → 1 倍，幅度差应接近 6.67 倍
+    expect(livelySum).toBeGreaterThan(calmSum * 6)
   })
 
   it('fades posture channels out while performing and keeps breath sway alive', () => {
@@ -163,7 +168,7 @@ describe('IdleAnimator', () => {
     animator.setActivity(-2)
     expect(animator.getActivity()).toBe(0)
     animator.setActivity(Number.NaN)
-    expect(animator.getActivity()).toBe(0.7)
+    expect(animator.getActivity()).toBe(DEFAULT_IDLE_ACTIVITY)
   })
 
   it('tolerates invalid delta values', () => {
