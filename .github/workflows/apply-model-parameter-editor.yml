@@ -67,17 +67,24 @@ jobs:
           pnpm run cubism:patch
 
       - name: Format and validate
+        shell: bash
         run: |
           pnpm exec prettier --write src electron README.md README.en.md CHANGELOG.md RELEASE_NOTES_v1.1.1.md package.json .github/workflows/release.yml
-          pnpm run typecheck
-          pnpm run lint
-          pnpm exec vite build
+          if ! (pnpm run typecheck && pnpm run lint && pnpm exec vite build) > validation-output.txt 2>&1; then
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add validation-output.txt
+            git commit -m 'Record model parameter validation failure'
+            git push origin HEAD:main
+            cat validation-output.txt
+            exit 1
+          fi
 
       - name: Remove one-shot migration files
         run: |
           rm scripts/apply-model-parameter-editor.py
           rm .github/workflows/apply-model-parameter-editor.yml
-          rm -f migration-output.txt
+          rm -f migration-output.txt validation-output.txt
 
       - name: Commit complete source
         run: |
