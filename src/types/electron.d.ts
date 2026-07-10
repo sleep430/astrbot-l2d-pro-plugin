@@ -324,6 +324,27 @@ declare global {
           dataUrl?: string
           error?: string
         }>
+        getParameters: () => Promise<{
+          success: boolean
+          parameters?: Array<{
+            id: string
+            value: number
+            defaultValue: number
+            minimumValue: number
+            maximumValue: number
+            overridden: boolean
+          }>
+          error?: string
+        }>
+        setParameter: (payload: {
+          id: string
+          value: number
+        }) => Promise<{ success: boolean; error?: string }>
+        clearParameter: (id?: string) => Promise<{ success: boolean; error?: string }>
+        onGetParameters: (callback: (payload: { requestId: string }) => void) => Unsubscribe
+        replyParameters: (payload: { requestId: string; parameters: any[] }) => void
+        onSetParameter: (callback: (payload: { id: string; value: number }) => void) => Unsubscribe
+        onClearParameter: (callback: (payload: { id?: string }) => void) => Unsubscribe
         onPreviewMotion: (
           callback: (payload: {
             group: string

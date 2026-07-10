@@ -75,6 +75,7 @@ export default {
   'settings.menu.connection.workspace': '工作区状态',
   'settings.menu.model': '模型',
   'settings.menu.model.current': '当前模型',
+  'settings.menu.model.parameters': '模型参数',
   'settings.menu.model.library': '模型库',
   'settings.menu.model.config': '别名配置',
   'settings.menu.history': '历史',
@@ -814,5 +815,7 @@ export default {
   'settings.modelConfig.previewFailed': '预览失败（请确认主窗口已加载模型）',
   'settings.modelConfig.captureThumbnail': '捕获缩略图',
   'settings.modelConfig.thumbnailCaptured': '已捕获主窗口画面',
-  'settings.modelConfig.thumbnailFailed': '捕获缩略图失败'
+  'settings.modelConfig.thumbnailFailed': '捕获缩略图失败',
+  'settings.model.parameters.title': '模型参数配置',
+  'settings.page.model.parameters.desc': '实时查看并调整当前 Live2D 模型的全部 Cubism 参数。'
 }

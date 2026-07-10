@@ -3,6 +3,7 @@ import { getMainWindow } from '../windows/mainWindow'
 import { createScopedLogger } from '../utils/logger'
 
 const logger = createScopedLogger('ipc.modelPreview')
+let parameterRequestSequence = 0
 
 type PreviewMotionPayload = { group: string; index: number; priority?: number; loop?: boolean }
 type PreviewExpressionPayload = {
@@ -14,6 +15,40 @@ type PreviewExpressionPayload = {
 }
 
 export function registerModelPreviewHandlers() {
+  ipcMain.handle('model:getParameters', async () => {
+    const mainWindow = getMainWindow()
+    if (!mainWindow) return { success: false, error: 'main window not available' }
+    const requestId = `parameter-${Date.now()}-${++parameterRequestSequence}`
+    return await new Promise(resolve => {
+      const onSnapshot = (_event: Electron.IpcMainEvent, payload: any) => {
+        if (payload?.requestId !== requestId) return
+        clearTimeout(timeout)
+        ipcMain.removeListener('model:parameterSnapshot', onSnapshot)
+        resolve({ success: true, parameters: payload.parameters ?? [] })
+      }
+      const timeout = setTimeout(() => {
+        ipcMain.removeListener('model:parameterSnapshot', onSnapshot)
+        resolve({ success: false, error: 'parameter request timed out' })
+      }, 3000)
+      ipcMain.on('model:parameterSnapshot', onSnapshot)
+      mainWindow.webContents.send('model:getParameters', { requestId })
+    })
+  })
+
+  ipcMain.handle('model:setParameter', async (_event, payload: { id: string; value: number }) => {
+    const mainWindow = getMainWindow()
+    if (!mainWindow) return { success: false, error: 'main window not available' }
+    mainWindow.webContents.send('model:setParameter', payload)
+    return { success: true }
+  })
+
+  ipcMain.handle('model:clearParameter', async (_event, payload?: { id?: string }) => {
+    const mainWindow = getMainWindow()
+    if (!mainWindow) return { success: false, error: 'main window not available' }
+    mainWindow.webContents.send('model:clearParameter', payload ?? {})
+    return { success: true }
+  })
+
   ipcMain.handle('model:previewMotion', async (_event, payload: PreviewMotionPayload) => {
     const mainWindow = getMainWindow()
     if (!mainWindow) {

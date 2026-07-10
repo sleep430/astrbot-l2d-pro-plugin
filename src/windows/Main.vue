@@ -484,7 +484,10 @@ function stopIdleForPerformance() {
   console.log('[主窗口] 待机管理器已停止')
 }
 
-function inferClickZone(payload: Live2DModelClickPayload, settings: Live2DClickSettings): Live2DClickZone {
+function inferClickZone(
+  payload: Live2DModelClickPayload,
+  settings: Live2DClickSettings
+): Live2DClickZone {
   const hitAreaText = `${payload.hitArea?.id ?? ''} ${payload.hitArea?.name ?? ''}`.toLowerCase()
   if (/head|face|hair|eye|mouth|cheek|头|脸|面|眼|口|发|髪/.test(hitAreaText)) {
     return 'head'
@@ -1507,6 +1510,25 @@ onMounted(async () => {
     window.electron.shortcut.onRecordingStop(() => {
       console.log('[主窗口] 全局快捷键：停止录音')
       void stopRecording({ reason: 'shortcut' })
+    })
+  )
+
+  mainWindowDisposers.push(
+    window.electron.model.onGetParameters(({ requestId }) => {
+      window.electron.model.replyParameters({
+        requestId,
+        parameters: live2dCanvasRef.value?.getParameterSnapshot() ?? []
+      })
+    })
+  )
+  mainWindowDisposers.push(
+    window.electron.model.onSetParameter(({ id, value }) => {
+      live2dCanvasRef.value?.setParameterOverride(id, value)
+    })
+  )
+  mainWindowDisposers.push(
+    window.electron.model.onClearParameter(({ id }) => {
+      live2dCanvasRef.value?.clearParameterOverride(id)
     })
   )
 

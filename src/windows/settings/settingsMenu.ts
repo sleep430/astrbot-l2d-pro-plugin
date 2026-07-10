@@ -25,6 +25,7 @@ export type SettingsChildKey =
   | 'workspace'
   | 'current'
   | 'library'
+  | 'parameters'
   | 'messages'
   | 'statistics'
   | 'behavior'
@@ -59,7 +60,8 @@ export const settingsMenuGroups: SettingsMenuGroup[] = [
     icon: Drama,
     children: [
       { key: 'current', icon: Palette },
-      { key: 'library', icon: Sparkles }
+      { key: 'library', icon: Sparkles },
+      { key: 'parameters', icon: SlidersHorizontal }
     ]
   },
   {

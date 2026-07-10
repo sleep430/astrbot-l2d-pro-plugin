@@ -328,9 +328,20 @@ contextBridge.exposeInMainWorld('electron', {
       fadeOut?: number
       holdMs?: number
       resetPolicy?: string
-    }) =>
-      ipcRenderer.invoke('model:previewExpression', payload),
+    }) => ipcRenderer.invoke('model:previewExpression', payload),
     captureThumbnail: () => ipcRenderer.invoke('model:captureThumbnail'),
+    getParameters: () => ipcRenderer.invoke('model:getParameters'),
+    setParameter: (payload: { id: string; value: number }) =>
+      ipcRenderer.invoke('model:setParameter', payload),
+    clearParameter: (id?: string) => ipcRenderer.invoke('model:clearParameter', { id }),
+    onGetParameters: (callback: (payload: { requestId: string }) => void) =>
+      subscribeIpc('model:getParameters', callback),
+    replyParameters: (payload: { requestId: string; parameters: any[] }) =>
+      ipcRenderer.send('model:parameterSnapshot', payload),
+    onSetParameter: (callback: (payload: { id: string; value: number }) => void) =>
+      subscribeIpc('model:setParameter', callback),
+    onClearParameter: (callback: (payload: { id?: string }) => void) =>
+      subscribeIpc('model:clearParameter', callback),
     onPreviewMotion: (
       callback: (payload: {
         group: string

@@ -211,6 +211,16 @@ function resetExpression(fadeMs: number = 300) {
   model?.resetExpression(fadeMs)
 }
 
+function getParameterSnapshot() {
+  return model?.getParameterSnapshot() ?? []
+}
+function setParameterOverride(id: string, value: number) {
+  return model?.setParameterOverride(id, value) ?? null
+}
+function clearParameterOverride(id?: string) {
+  model?.clearParameterOverride(id)
+}
+
 /**
  * 播放随机动作
  */
@@ -658,6 +668,9 @@ defineExpose({
   getMotionDurationMap,
   setExpression,
   resetExpression,
+  getParameterSnapshot,
+  setParameterOverride,
+  clearParameterOverride,
   playRandomMotion,
   getModelPosition,
   setModelPosition,

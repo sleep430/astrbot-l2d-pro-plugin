@@ -80,6 +80,7 @@ const en: I18nMessageSchema = {
   'settings.menu.connection.workspace': 'Workspace Status',
   'settings.menu.model': 'Model',
   'settings.menu.model.current': 'Current Model',
+  'settings.menu.model.parameters': 'Model Parameters',
   'settings.menu.model.library': 'Model Library',
   'settings.menu.model.config': 'Alias Config',
   'settings.menu.history': 'History',
@@ -854,7 +855,10 @@ const en: I18nMessageSchema = {
   'settings.modelConfig.previewFailed': 'Preview failed (load the model in the main window first)',
   'settings.modelConfig.captureThumbnail': 'Capture thumbnail',
   'settings.modelConfig.thumbnailCaptured': 'Main window captured',
-  'settings.modelConfig.thumbnailFailed': 'Failed to capture thumbnail'
+  'settings.modelConfig.thumbnailFailed': 'Failed to capture thumbnail',
+  'settings.model.parameters.title': 'Model Parameters',
+  'settings.page.model.parameters.desc':
+    'Inspect and adjust all Cubism parameters of the current Live2D model in real time.'
 }
 
 export default en

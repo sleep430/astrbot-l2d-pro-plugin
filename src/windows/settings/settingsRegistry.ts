@@ -115,6 +115,15 @@ export function createSettingsSectionRegistry(
         await advancedDomain.ensureBaseReady(force)
       }
     },
+    'model/parameters': {
+      key: 'model/parameters',
+      group: 'model',
+      child: 'parameters',
+      layoutProfile: 'workspace',
+      cachePolicy: 'discard',
+      skeletonKind: 'list',
+      loader: () => import('./sections/SettingsModelParametersSection.vue')
+    },
     'model/library': {
       key: 'model/library',
       group: 'model',

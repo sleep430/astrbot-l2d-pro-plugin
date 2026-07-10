@@ -114,3 +114,8 @@ This repository does not commit user models, paid models, `.lpk` packages, `node
 ## License
 
 MIT. Upstream copyright and license notices are retained in [LICENSE](./LICENSE) and [NOTICE.md](./NOTICE.md).
+
+
+### Live2D Model Parameter Editor
+
+Open **Settings → Model → Model Parameters** to search, inspect, and adjust every Cubism parameter of the active model in real time. Overrides can be cleared individually or all at once to return control to motions, expressions, gaze, and lip sync.

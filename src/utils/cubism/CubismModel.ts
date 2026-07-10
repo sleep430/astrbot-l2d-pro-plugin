@@ -236,6 +236,15 @@ type ActiveExpressionRuntime = {
  */
 export { CubismModelSettingJson, type ICubismModelSetting }
 
+export interface CubismParameterSnapshotItem {
+  id: string
+  value: number
+  defaultValue: number
+  minimumValue: number
+  maximumValue: number
+  overridden: boolean
+}
+
 /**
  * Cubism 模型类
  * 提供 Live2D 模型的完整功能
@@ -250,6 +259,8 @@ export class CubismModel {
   private canvas: HTMLCanvasElement | null = null
   private viewportWidth: number = 0
   private viewportHeight: number = 0
+
+  private parameterOverrides = new Map<string, number>()
 
   // Cubism Framework 对象
   private userModel: CubismUserModel | null = null
@@ -1355,7 +1366,10 @@ export class CubismModel {
     const defaultFadeInMs = this.getDefaultExpressionFadeInMs(members)
     const defaultFadeOutMs = this.getDefaultExpressionFadeOutMs(members)
     const fadeInMs = this.normalizeExpressionFadeMs(request.fade, defaultFadeInMs)
-    const fadeOutMs = this.normalizeExpressionFadeMs(request.fadeOut ?? request.fade, defaultFadeOutMs)
+    const fadeOutMs = this.normalizeExpressionFadeMs(
+      request.fadeOut ?? request.fade,
+      defaultFadeOutMs
+    )
     const resetPolicy = request.resetPolicy ?? 'keep'
     const previous =
       resetPolicy === 'previous'
@@ -1856,6 +1870,46 @@ export class CubismModel {
     return !this.motionManager.isFinished()
   }
 
+  getParameterSnapshot(): CubismParameterSnapshotItem[] {
+    if (!this.userModel) return []
+    const model = this.userModel.getModel()
+    const result: CubismParameterSnapshotItem[] = []
+    for (let index = 0; index < model.getParameterCount(); index++) {
+      const id = cubismIdToString(model.getParameterId(index))
+      const override = this.parameterOverrides.get(id)
+      result.push({
+        id,
+        value: override ?? model.getParameterValueByIndex(index),
+        defaultValue: model.getParameterDefaultValue(index),
+        minimumValue: model.getParameterMinimumValue(index),
+        maximumValue: model.getParameterMaximumValue(index),
+        overridden: override !== undefined
+      })
+    }
+    return result
+  }
+
+  setParameterOverride(id: string, value: number): number | null {
+    if (!this.userModel || !id || !Number.isFinite(value)) return null
+    const model = this.userModel.getModel()
+    for (let index = 0; index < model.getParameterCount(); index++) {
+      if (cubismIdToString(model.getParameterId(index)) !== id) continue
+      const clamped = Math.min(
+        model.getParameterMaximumValue(index),
+        Math.max(model.getParameterMinimumValue(index), value)
+      )
+      this.parameterOverrides.set(id, clamped)
+      model.setParameterValueByIndex(index, clamped)
+      return clamped
+    }
+    return null
+  }
+
+  clearParameterOverride(id?: string): void {
+    if (id) this.parameterOverrides.delete(id)
+    else this.parameterOverrides.clear()
+  }
+
   /**
    * 更新模型
    */
@@ -1941,6 +1995,11 @@ export class CubismModel {
       for (const id of this.lipSyncIds) {
         model.addParameterValueById(id, this.lipSyncValue, 0.8)
       }
+    }
+
+    // 参数编辑器覆盖：在动画之后应用，确保实时值不被动作覆盖。
+    for (const [id, value] of this.parameterOverrides) {
+      model.setParameterValueById(this.getParameterIdHandle(id), value)
     }
 
     // 物理与姿势在全部姿态偏移注入之后求值，使头发/饰品自然跟随

@@ -243,3 +243,8 @@ LICENSE            MIT 许可
 ## License
 
 MIT。原项目版权与许可声明保留在 [LICENSE](./LICENSE) 和 [NOTICE.md](./NOTICE.md) 中。
+
+
+### Live2D 模型参数编辑器
+
+在 **设置 → 模型 → 模型参数** 中可实时搜索、查看和调整当前模型的全部 Cubism 参数。编辑值会立即应用到主窗口模型，并可单项或全部恢复为动画驱动状态。
