@@ -1,0 +1,21 @@
+updated: src/utils/cubism/CubismModel.ts
+updated: src/components/Live2D/Canvas.vue
+updated: electron/ipc/modelPreview.ts
+updated: electron/preload.ts
+updated: src/types/electron.d.ts
+updated: src/windows/Main.vue
+updated: src/windows/settings/settingsMenu.ts
+updated: src/windows/settings/settingsRegistry.ts
+updated: src/i18n/locales/zh-CN.ts
+updated: src/i18n/locales/en.ts
+Traceback (most recent call last):
+  File "/home/runner/work/astrbot-l2d-pro-plugin/astrbot-l2d-pro-plugin/scripts/apply-model-parameter-editor.py", line 516, in <module>
+    lock_data = json.loads(lock_file.read_text(encoding="utf-8"))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/pathlib.py", line 1029, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/pathlib.py", line 1015, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/astrbot-l2d-pro-plugin/astrbot-l2d-pro-plugin/package-lock.json'
