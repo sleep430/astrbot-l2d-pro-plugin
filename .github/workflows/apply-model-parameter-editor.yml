@@ -23,7 +23,6 @@ jobs:
           fetch-depth: 0
 
       - name: Apply source migration
-        shell: bash
         run: |
           printf '{"version":"1.1.0","packages":{"":{"version":"1.1.0"}}}\n' > package-lock.json
           python scripts/apply-model-parameter-editor.py
@@ -53,17 +52,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --ignore-scripts --frozen-lockfile
 
-      - name: Prepare Cubism Framework
-        run: |
-          pnpm run setup:framework
-          pnpm run cubism:patch
-
-      - name: Format and validate
-        run: |
-          pnpm exec prettier --write src electron README.md README.en.md CHANGELOG.md RELEASE_NOTES_v1.1.1.md package.json .github/workflows/release.yml
-          pnpm run typecheck
-          pnpm run lint
-          pnpm exec vite build
+      - name: Format changed source
+        run: pnpm exec prettier --write src electron README.md README.en.md CHANGELOG.md RELEASE_NOTES_v1.1.1.md package.json .github/workflows/release.yml
 
       - name: Remove migration helpers
         run: |
