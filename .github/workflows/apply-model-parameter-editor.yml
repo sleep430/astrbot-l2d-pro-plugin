@@ -1,0 +1,70 @@
+name: Apply Model Parameter Editor
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'scripts/apply-model-parameter-editor.py'
+      - '.github/workflows/apply-model-parameter-editor.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Apply source migration
+        run: python scripts/apply-model-parameter-editor.py
+
+      - name: Setup pnpm
+        run: |
+          corepack enable
+          corepack prepare pnpm@10.28.2 --activate
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --ignore-scripts --frozen-lockfile
+
+      - name: Prepare Cubism Framework
+        run: |
+          pnpm run setup:framework
+          pnpm run cubism:patch
+
+      - name: Format and validate
+        run: |
+          pnpm exec prettier --write src electron README.md README.en.md CHANGELOG.md RELEASE_NOTES_v1.1.1.md package.json package-lock.json .github/workflows/release.yml
+          pnpm run typecheck
+          pnpm run lint
+          pnpm exec vite build
+
+      - name: Remove one-shot migration files
+        run: |
+          rm scripts/apply-model-parameter-editor.py
+          rm .github/workflows/apply-model-parameter-editor.yml
+
+      - name: Commit complete source
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Add real-time Live2D model parameter editor'
+          git push origin HEAD:main
+
+      - name: Trigger v1.1.1 release build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build.yml --ref main
