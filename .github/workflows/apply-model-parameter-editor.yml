@@ -36,6 +36,16 @@ jobs:
             exit 1
           fi
           rm package-lock.json
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/windows/settings/sections/SettingsModelParametersSection.vue')
+          source = path.read_text(encoding='utf-8')
+          source = source.replace(
+              '@update:value="value => value !== null && updateValue(item, value)"',
+              '@update:value="(value: number | null) => value !== null && updateValue(item, value)"'
+          )
+          path.write_text(source, encoding='utf-8')
+          PY
 
       - name: Setup pnpm
         run: |
