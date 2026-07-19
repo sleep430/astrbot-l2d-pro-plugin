@@ -1,6 +1,6 @@
 # AstrBot Live2D Desktop Pro
 
-> 当前版本：`1.1.0`
+> 当前版本：`1.1.1`
 > 基于 [lxfight/astrbot-live2d-desktop](https://github.com/lxfight/astrbot-live2d-desktop) 改造的 Live2D 桌面客户端 Pro 版。
 
 这是一个面向 AstrBot 的 Live2D 桌面客户端改版。它继承了原项目的 Electron + Vue 3 桌面端、AstrBot WebSocket Bridge、Cubism 3/4 模型渲染、消息展示、桌面助手能力和模型管理能力，并在此基础上补充了更偏“桌宠/Live2DViewerEX 使用习惯”的模型导入、点击交互、表情测试和自回归体验。
@@ -13,7 +13,7 @@
 
 | 方向 | 原项目能力 | Pro 版新增/强化 |
 | --- | --- | --- |
-| 仓库形态 | 完整开发源码、文档站、测试和构建脚本 | 从当前桌面端分发包整理出的干净运行源码快照，保留 `dist/`、`dist-electron/`、资源和打包配置 |
+| 仓库形态 | 完整开发源码、文档站、测试和构建脚本 | 同样保留完整源码工程（`src/`、`electron/`、`tests/`、`docs-site/`），并额外随仓库携带 `dist/`、`dist-electron/` 构建产物，克隆后可直接运行 |
 | 模型导入 | 以 `.model3.json` 模型目录为入口 | 导入入口支持选择模型文件夹或 Live2DViewerEX 风格 `.lpk` 文件 |
 | LPK 兼容 | 不面向 `.lpk` 包 | 尝试解包/转换 `.lpk`，生成标准 `.model3.json` 模型目录后复用现有导入管线 |
 | Live2DViewerEX 配置 | 不强调 EX 桌面交互语义 | 读取 EX 风格 `HitAreas`、`Motion`、`Expression` 等配置，尽量映射为可播放动作/表情 |
@@ -139,19 +139,29 @@ Pro 版会尽量读取 EX 风格配置中的：
 
 ## 快速开始
 
+仓库使用 pnpm 管理依赖（见 `pnpm-lock.yaml` / `pnpm-workspace.yaml`）。需要 Node.js 18 或更高版本（CI 使用 Node 20）。Windows 下如果重建原生依赖失败，可能需要 Visual Studio Build Tools。
+
 ### 1. 安装依赖
 
-需要 Node.js 18 或更高版本。Windows 下如果重建原生依赖失败，可能需要 Visual Studio Build Tools。
-
 ```bash
-npm install
-npm run rebuild
+pnpm install
+pnpm rebuild
 ```
+
+`pnpm install` 的 postinstall 钩子会自动完成原生依赖重建、Cubism Core 下载和 Framework 拉取与补丁；网络环境较差时可单独重跑 `pnpm rebuild` 或 `pnpm setup:framework`。
 
 ### 2. 启动
 
+开发模式（Vite 热更新）：
+
 ```bash
-npm start
+pnpm dev
+```
+
+直接以已构建产物运行：
+
+```bash
+pnpm start
 ```
 
 ### 3. 连接 AstrBot
@@ -183,21 +193,28 @@ npm start
 ## 打包
 
 ```bash
-npm run package:dir
-npm run package:win
-npm run package:mac
-npm run package:linux
+pnpm run package:dir
+pnpm run package:win
+pnpm run package:mac
+pnpm run package:linux
 ```
 
-打包配置只包含当前仓库中的运行代码和图标资源，不会把用户模型、`node_modules/`、`win-unpacked/`、`app.asar` 或 Live2D Cubism Core 打进去。
+打包产物只包含运行代码和图标资源，不会把用户模型、`node_modules/` 以外的开发文件、`win-unpacked/`、`app.asar` 或 Live2D Cubism Core 打进去。
 
 ## 目录结构
 
 ```text
-dist/              Renderer 构建产物、页面入口、前端资源
-dist-electron/     Electron 主进程、preload 和平台 watcher 构建产物
-resources/         应用图标资源
-package.json       运行、重建原生依赖和打包配置
+src/               渲染进程源码（Vue 3 组件、Pinia stores、窗口入口、工具与类型）
+electron/          Electron 主进程与 preload 源码
+tests/             Vitest 单元测试
+docs/              使用文档
+docs-site/         VitePress 文档站源码
+scripts/           构建、原生依赖重建、Cubism SDK 拉取与补丁脚本
+public/            前端静态资源
+resources/         应用图标与打包资源
+dist/              Renderer 构建产物（随仓库携带，可直接运行）
+dist-electron/     主进程与 preload 构建产物（随仓库携带）
+package.json       依赖、脚本与 electron-builder 打包配置
 README.md          当前项目说明
 NOTICE.md          来源与第三方运行时说明
 LICENSE            MIT 许可
@@ -205,14 +222,14 @@ LICENSE            MIT 许可
 
 ## 仓库形态说明
 
-当前桌面文件夹中没有保留原始 `.vue` / `.ts` 源文件和 source map，所以本仓库采用“反打包源码/运行源码快照”形态：
+本仓库是完整的开发源码工程：
 
-- 保留可运行的 `dist/` 与 `dist-electron/`。
-- 保留必要元数据和 Electron 打包配置。
-- 不提交上游开发源码、测试、文档站或完整构建链。
-- 不提交 Electron 完整打包产物。
+- `src/` 与 `electron/` 保存全部 Vue 3 / TypeScript 开发源码。
+- `tests/`、`docs-site/`、构建链配置（Vite / vitest / electron-builder）一并提交。
+- 同时随仓库携带已构建的 `dist/` 与 `dist-electron/` 产物，方便不安装完整工具链时直接 `pnpm start` 运行，也方便核对发布内容。
+- 不提交 Electron 完整打包产物（安装包、便携包）。
 
-如果只是运行、检查逻辑或继续基于当前桌面包维护，这种形态足够使用；如果要恢复完整工程化开发体验，需要重新整理 Vue/TS 源码结构。
+日常开发直接修改 `src/` / `electron/` 并通过 `pnpm run build:vite` 重新生成 `dist/`；如果只想运行或排查线上行为，使用仓库内的构建产物即可。
 
 ## Live2D 资源策略
 
@@ -229,7 +246,7 @@ LICENSE            MIT 许可
 ## 和原项目的关系
 
 - 原项目：[lxfight/astrbot-live2d-desktop](https://github.com/lxfight/astrbot-live2d-desktop)
-- 本仓库：基于原项目桌面端能力继续改造的 Pro 分支/运行源码快照。
+- 本仓库：基于原项目桌面端能力继续改造的 Pro 分支。
 - 保留原项目 MIT 许可与来源说明。
 - 不包含 Live2D Cubism SDK 本体；Cubism SDK 使用需遵守 Live2D 官方许可。
 
