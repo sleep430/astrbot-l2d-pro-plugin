@@ -107,15 +107,29 @@ jobs:
         shell: pwsh
         run: Get-ChildItem release -File | Sort-Object Name | Format-Table Name, Length
 
-      - name: Create or move tag
+      # 安全说明：tag 一旦发布就不再移动。
+      # 之前的版本在这里使用 `git tag -f` + `git push --force` 强推 tag，
+      # 会让已发布的 Release 指向悄悄漂移，也会让克隆过仓库的人拿到不一致的历史。
+      # 现在只在 tag 不存在时创建；已存在则保持原样，仅刷新 Release 资产。
+      - name: Create tag if missing
         shell: pwsh
         env:
           TAG_NAME: ${{ steps.version.outputs.tag }}
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git tag -f $env:TAG_NAME
-          git push origin "refs/tags/$env:TAG_NAME" --force
+
+          $remoteTag = git ls-remote --tags origin "refs/tags/$env:TAG_NAME"
+          if ($remoteTag) {
+            Write-Host "Tag $env:TAG_NAME already exists on origin; leaving it untouched."
+            exit 0
+          }
+
+          $localTag = git tag --list $env:TAG_NAME
+          if (-not $localTag) {
+            git tag $env:TAG_NAME
+          }
+          git push origin "refs/tags/$env:TAG_NAME"
 
       - name: Create or refresh GitHub release
         shell: pwsh
